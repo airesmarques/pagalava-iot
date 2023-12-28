@@ -1,0 +1,5 @@
+#flask
+#requests
+RPi.GPIO
+spidev
+azure-iot-device

@@ -1,0 +1,1 @@
+sudo journalctl -u receive_messages.service
