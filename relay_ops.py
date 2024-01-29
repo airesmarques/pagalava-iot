@@ -84,6 +84,12 @@ def activate_machine(machine_id: str):
     control_relay(relay_pin, GPIO.HIGH)
 
 
+
+#
+# Test functions
+#
+
+
 def test_all():
     for relay_label in relay_pins_v0:
         print(f"Testing {relay_label}")
@@ -93,11 +99,16 @@ def test_all():
         control_relay(relay_label, GPIO.HIGH)
 
 
-# Main function definition
-def main():
-    #uncomment to test
-    #test_all()
-    pass  # Prevents relays from activating on startup
+# Test module 1
 
-if __name__ == '__main__':
-    main()
+
+def test_module_2():
+    # List of relays in Module 2
+    module_2_relays = ["R9", "R10", "R11", "R12", "R13", "R14", "R15", "R16"]
+
+    for relay_label in module_2_relays:
+        print(f"Testing {relay_label} in Module 2")
+        # Turn on the relay
+        control_relay(relay_label, GPIO.LOW)
+        # Turn off the relay
+        control_relay(relay_label, GPIO.HIGH)
