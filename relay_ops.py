@@ -23,15 +23,18 @@ relay_pins_v0 = {
     "R6": 27,  #WASH
     "R7": 17,  #WASH
     "R8": 18,  #WASH
-    "R9": 12,  #DRY-ok
-    "R10": 16, #DRY-ok
-    "R11": 20, #DRY-ok
-    "R12": 21, #DRY-ok
-    "R13": 26, #DRY-ok
-    "R14": 19, #DRY-ok
-    "R15": 13, #DRY-ok
-    "R16": 17  #DRY-ok
+    # Module 2 - DRY
+    "R9": 12,
+    "R10": 16,
+    "R11": 20,
+    "R12": 21,
+    # Module 3 - DRY
+    "R13": 17,
+    "R14": 13,
+    "R15": 19,
+    "R16": 26
 }
+
 
 '''
 Module 1
