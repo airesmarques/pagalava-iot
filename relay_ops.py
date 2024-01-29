@@ -14,6 +14,8 @@ relay_mapping_v0 = {
     "14": "R16"
 }
 
+
+# L2 - Avenida 
 relay_pins_v0 = {
     "R1": 22,  #WASH
     "R2": 23,  #WASH
@@ -34,6 +36,9 @@ relay_pins_v0 = {
     "R15": 19,
     "R16": 26
 }
+
+# Laundry 101 
+# TODO
 
 
 '''
