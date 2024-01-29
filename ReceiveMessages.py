@@ -21,6 +21,15 @@ CONNECTION_STRING = os.getenv("CONNECTION_STRING")
 print(f"{CONNECTION_STRING[:5]}...{CONNECTION_STRING[-5:]}")
 
 
+def message_router():
+    # CreateUpdate Configuration
+    # ...
+    
+    # Activation message
+    # ...
+    pass
+
+
 def message_handler(message):
     global RECEIVED_MESSAGES
     RECEIVED_MESSAGES += 1

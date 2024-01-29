@@ -1,1 +1,1 @@
-sudo journalctl -u receive_messages.service
+sudo journalctl -u receive_messages.service -n 50
