@@ -3,3 +3,4 @@
 RPi.GPIO
 spidev
 azure-iot-device
+python-dotenv

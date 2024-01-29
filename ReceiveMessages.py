@@ -1,12 +1,25 @@
+import logging
+import os
 import time
 import json
+
+from dotenv import load_dotenv
+
 from azure.iot.device import IoTHubDeviceClient
 
 import relay_ops
 
+load_dotenv()
+
+logging.basicConfig(level=logging.INFO)
+
+
+
 RECEIVED_MESSAGES = 0
 
-CONNECTION_STRING = "HostName=digipay2-IoTHub-dev.azure-devices.net;DeviceId=rpiPagalava1;SharedAccessKey=jOunIf13pvIgqPc1xqnBGdBZzgv811zXjAIoTAtYINc="
+CONNECTION_STRING = os.getenv("CONNECTION_STRING")
+print(f"{CONNECTION_STRING[:5]}...{CONNECTION_STRING[-5:]}")
+
 
 def message_handler(message):
     global RECEIVED_MESSAGES
