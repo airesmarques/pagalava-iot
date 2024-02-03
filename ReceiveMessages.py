@@ -21,13 +21,25 @@ CONNECTION_STRING = os.getenv("CONNECTION_STRING")
 print(f"{CONNECTION_STRING[:5]}...{CONNECTION_STRING[-5:]}")
 
 
-def message_router():
+def message_configure():
     # CreateUpdate Configuration
     # ...
     
     # Activation message
-    # ...
+    # ...[]
     pass
+
+
+
+def message_activate(json_data: dict):
+
+    machine_id = json_data['machine_id']
+    number_of_impulses = json_data['number_of_impulses']
+    relay_ops.activate_machine(
+        machine_id=machine_id,
+        number_of_impulses=number_of_impulses
+    )
+    
 
 
 def message_handler(message):
@@ -47,10 +59,15 @@ def message_handler(message):
     json_data = json.loads(str_data)
 
     # Extract the machine_id value
-    machine_id = json_data['machine_id']
+    msg_type = json_data['msg_type']
+    if msg_type == 'configure':
+        message_configure(json_data)
+    elif msg_type == 'activate':
+        message_activate(json_data)
+    else:
+        print("Unknown message type")
     
-    relay_ops.activate_machine(machine_id)
-    
+ 
     print("Total calls received: {}".format(RECEIVED_MESSAGES))
     
 def main():

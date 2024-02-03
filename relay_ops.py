@@ -75,21 +75,25 @@ def control_relay(relay_label, state):
     pin = relay_pins_v0[relay_label]
     print("preparing for",relay_label, pin)
     GPIO.output(pin, state)
-    time.sleep(1)  # Wait for 1 second
 
     #GPIO.cleanup()
 
 
-def activate_machine(machine_id: str):
+def activate_machine(
+    machine_id: str,
+    number_of_impulses: int = 1):
     # Setup GPIO
     
     relay_pin = relay_mapping_v0.get(machine_id)
     
-    # Activate the machine by setting the relay to the energized state (low)
-    control_relay(relay_pin, GPIO.LOW)
-    
-    # Deactivate after 1 second
-    control_relay(relay_pin, GPIO.HIGH)
+    for i in range(number_of_impulses):   
+        # Activate the machine by setting the relay to the energized state (low)
+        control_relay(relay_pin, GPIO.LOW)
+
+        # Deactivate after 2 seconds
+        time.sleep(1)
+        control_relay(relay_pin, GPIO.HIGH)
+        time.sleep(1)
 
 
 
