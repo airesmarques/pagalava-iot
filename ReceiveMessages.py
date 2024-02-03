@@ -21,13 +21,14 @@ CONNECTION_STRING = os.getenv("CONNECTION_STRING")
 print(f"{CONNECTION_STRING[:5]}...{CONNECTION_STRING[-5:]}")
 
 
-def message_configure():
-    # CreateUpdate Configuration
-    # ...
+def message_configure(config_data: dict):
+    func_name = "message_configure"
+    logging.info(f"{func_name}: {config_data}")
+
+    # now save the configuration file
+    with open('config.json', 'w') as f:
+        json.dump(config_data, f, indent=4)
     
-    # Activation message
-    # ...[]
-    pass
 
 
 
@@ -61,7 +62,7 @@ def message_handler(message):
     # Extract the machine_id value
     msg_type = json_data['msg_type']
     if msg_type == 'configure':
-        message_configure(json_data)
+        message_configure(json_data.get('data'))
     elif msg_type == 'activate':
         message_activate(json_data)
     else:
