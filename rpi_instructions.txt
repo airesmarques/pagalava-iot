@@ -1,3 +1,38 @@
-20231012~bullseye
+# Instalar raspberry 3-4-ZeroW com a seguinte versao
+# 2023-12-05 bullseye - 64 bit lite
 
-2023-12-05 bullseye - 64 bit lite
+#!/bin/bash
+
+# Update and upgrade Raspberry Pi OS
+sudo apt-get update && sudo apt-get upgrade -y
+
+# Install Git
+sudo apt-get install git -y
+
+# Install Python3 and PIP
+sudo apt-get install python3 python3-pip -y
+
+# Install GPIO library
+sudo apt-get install python3-rpi.gpio -y
+
+# Navigate to your desired directory (modify as needed)
+cd /home/pi
+# Was here
+
+# Clone your repository (replace with your repository URL)
+git clone https://your-repository-url.git
+
+# Navigate into the cloned directory (modify as needed)
+cd your-repository-directory
+
+# Install required Python packages
+pip3 install -r requirements.txt
+
+# Make your main script executable
+chmod +x your-main-script.py
+
+# Add a line to your crontab or rc.local to run your script at boot (optional)
+# crontab -e
+# Add: @reboot python3 /home/pi/your-repository-directory/your-main-script.py
+# OR edit /etc/rc.local and add before 'exit 0':
+# python3 /home/pi/your-repository-directory/your-main-script.py &
