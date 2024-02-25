@@ -30,11 +30,16 @@ def message_configure(config_data: dict):
         json.dump(config_data, f, indent=4)
     
 
+def message_wake_up():
+    func_name = "message_wake_up"
+    logging.info(f"{func_name}")
 
 
 def message_activate(json_data: dict):
 
     machine_id = json_data['machine_id']
+    if isinstance(machine_id, str):
+        machine_id = int(machine_id)
     number_of_impulses = json_data['number_of_impulses']
     relay_ops.activate_machine(
         machine_id=machine_id,
@@ -63,6 +68,8 @@ def message_handler(message):
     msg_type = json_data['msg_type']
     if msg_type == 'configure':
         message_configure(json_data.get('data'))
+    if msg_type == 'wake_up':
+        message_wake_up()
     elif msg_type == 'activate':
         message_activate(json_data)
     else:
