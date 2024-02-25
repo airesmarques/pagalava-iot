@@ -2,16 +2,16 @@
 
 Este guia fornece instruções passo a passo para a instalação e configuração do Raspberry Pi OS Bullseye 64-bit Lite no seu Raspberry Pi.
 
-## Preparação do dispositivo
+## 1. Preparação do dispositivo
 
-### Passo 1: Instalar o Raspberry Pi Imager
+### 1.1: Instalar o Raspberry Pi Imager
 
 Para começar, precisa do Raspberry Pi Imager para escrever a imagem do sistema operacional no cartão SD. Siga os passos:
 
 1. Faça o download do Raspberry Pi Imager a partir do site oficial: [Raspberry Pi Imager](https://www.raspberrypi.org/software/).
 2. Instale o aplicativo no seu computador, seguindo as instruções fornecidas.
 
-### Passo 2: Escrever a Imagem do Sistema Operativo
+### 1.2: Escrever a Imagem do Sistema Operativo
 
 Com o Raspberry Pi Imager instalado, pode gravar a imagem do sistema operativo no cartão SD.
 
@@ -25,7 +25,7 @@ Com o Raspberry Pi Imager instalado, pode gravar a imagem do sistema operativo n
 
 ![Exemplo de versão Debian Bullseye](/instructions/Debian_Bullseye_version.png)
 
-### Passo 3: Configurar Wi-Fi
+### 1.3: Configurar Wi-Fi
 
 É aconselhável configurar as definições da Wi-Fi da loja antes de iniciar o Raspberry Pi pela primeira vez.
 
@@ -34,6 +34,7 @@ Com o Raspberry Pi Imager instalado, pode gravar a imagem do sistema operativo n
 
 
 ## Configuração do sistema PagaLava
+
 
 
 ## Ligação à Cloud Pagalava
