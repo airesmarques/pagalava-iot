@@ -14,8 +14,8 @@ echo "Updating and upgrading Raspberry Pi OS..."
 sudo apt-get update && sudo apt-get upgrade -y
 
 # Install Git, Python3, PIP, and GPIO library
-echo "Installing Git, Python3, PIP, and GPIO library..."
-sudo apt-get install git python3 python3-pip python3-rpi.gpio -y
+echo "Installing Git, Python3, PIP, GPIO library, Python Virtual environments..."
+sudo apt-get install git python3 python3-pip python3-rpi.gpio python3-venv -y
 
 # Clone the repository
 echo "Cloning the repository..."
