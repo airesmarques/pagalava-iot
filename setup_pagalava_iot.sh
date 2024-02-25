@@ -58,13 +58,6 @@ echo "Setting up the virtual environment..."
 python3 -m venv "${VENVDIR}"
 . "${VENVDIR}/bin/activate"
 
-# After setting up your environment, if you want the IOT_CONNECTION_STRING
-# to persist across sessions and reboots, you'll need to add it to
-# a persistent environment variable storage like ~/.bashrc or /etc/environment
-echo "export IOT_CONNECTION_STRING='$IOT_CONNECTION_STRING'" >> ~/.bashrc
-# Reload .bashrc to apply changes immediately
-source ~/.bashrc
-
 
 # Install required Python packages
 echo "Installing required Python packages..."
@@ -89,6 +82,7 @@ User=${USERNAME}
 Group=${GROUPNAME}
 WorkingDirectory=${WORKINGDIR}
 Environment="PATH=${VENVDIR}/bin"
+Environment="IOT_CONNECTION_STRING=${IOT_CONNECTION_STRING}"
 ExecStart=${VENVDIR}/bin/python ${WORKINGDIR}/${SCRIPTNAME}
 
 [Install]

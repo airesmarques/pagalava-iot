@@ -39,7 +39,7 @@ Para instalar todos os components do sistema Pagalava, execute o script abaixo:
 
 curl -sSL -o setup_pagalava_iot.sh https://raw.githubusercontent.com/airesmarques/pagalava-iot/main/setup_pagalava_iot.sh
 chmod +x setup_pagalava_iot.sh
-./setup_pagalava_iot.sh
+. ./setup_pagalava_iot.sh
 rm setup_pagalava_iot.sh
 
 
