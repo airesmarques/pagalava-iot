@@ -35,8 +35,17 @@ Para o nome de utizador do raspberry, digite: pagalava.
 
 
 ## Configuração do sistema PagaLava
+Para instalar todos os components do sistema Pagalava, execute o script abaixo:
 curl -sSL https://raw.githubusercontent.com/airesmarques/pagalava-iot/main/setup_pagalava_iot.sh | bash
 
-
-
 ## Ligação à Cloud Pagalava
+
+
+## Configuração das máquinas de lavar e secar
+
+Para já, fazemos por mensagens de WhatsApp :D
+Para o futuro irei criar uma dashboard de configuração.
+
+## Configuração do IfThenPay
+
+Irei documentar o processo daqui a uns dias...

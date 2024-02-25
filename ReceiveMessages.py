@@ -17,8 +17,8 @@ logging.basicConfig(level=logging.INFO)
 
 RECEIVED_MESSAGES = 0
 
-CONNECTION_STRING = os.getenv("CONNECTION_STRING")
-print(f"{CONNECTION_STRING[:5]}...{CONNECTION_STRING[-5:]}")
+IOT_CONNECTION_STRING = os.getenv("IOT_CONNECTION_STRING")
+print(f"{IOT_CONNECTION_STRING[:5]}...{IOT_CONNECTION_STRING[-5:]}")
 
 
 def message_configure(config_data: dict):
@@ -82,7 +82,7 @@ def main():
     print ("Starting the Python IoT Hub C2D Messaging device sample...")
 
     # Instantiate the client
-    client = IoTHubDeviceClient.create_from_connection_string(CONNECTION_STRING)
+    client = IoTHubDeviceClient.create_from_IOT_connection_string(IOT_CONNECTION_STRING)
 
     print ("Waiting for C2D messages, press Ctrl-C to exit")
     try:

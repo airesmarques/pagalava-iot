@@ -17,9 +17,37 @@ sudo apt-get update && sudo apt-get upgrade -y
 echo "Installing Git, Python3, PIP, GPIO library, Python Virtual environments..."
 sudo apt-get install git python3 python3-pip python3-rpi.gpio python3-venv -y
 
+echo "Por favor introduz o valor da IOT_CONNECTION_STRING:"
+read -r IOT_CONNECTION_STRING
+
+# Check if the connection string is empty
+if [ -z "$IOT_CONNECTION_STRING" ]; then
+    echo "IOT_CONNECTION_STRING is required to proceed."
+    exit 1
+fi
+
+# Export the connection string as an environment variable
+export IOT_CONNECTION_STRING
+
+
 # Clone the repository
-echo "Cloning the repository..."
-git clone ${REPO_URL} "${WORKINGDIR}" || { echo "Failed to clone repository."; exit 1; }
+echo "Cloning or updating the Pagalava repository..."
+#git clone ${REPO_URL} "${WORKINGDIR}" || { echo "Failed to clone repository."; exit 1; }
+# Check if the pagalava-iot directory exists
+cd "${HOME}"
+if [ -d "pagalava-iot" ]; then
+    echo "Updating existing pagalava-iot repository..."
+    cd pagalava-iot
+    # Fetch the latest changes without losing local changes
+    git fetch --all
+    git reset --hard origin/main
+    git pull origin main
+else
+    echo "Cloning the pagalava-iot repository..."
+    # Clone your repository (replace with your repository URL)
+    git clone https://github.com/airesmarques/pagalava-iot
+    # Navigate into the cloned directory
+fi
 
 # Navigate into the cloned directory
 cd "${WORKINGDIR}"
@@ -28,6 +56,14 @@ cd "${WORKINGDIR}"
 echo "Setting up the virtual environment..."
 python3 -m venv "${VENVDIR}"
 . "${VENVDIR}/bin/activate"
+
+# After setting up your environment, if you want the IOT_CONNECTION_STRING
+# to persist across sessions and reboots, you'll need to add it to
+# a persistent environment variable storage like ~/.bashrc or /etc/environment
+echo "export IOT_CONNECTION_STRING='$IOT_CONNECTION_STRING'" >> ~/.bashrc
+# Reload .bashrc to apply changes immediately
+source ~/.bashrc
+
 
 # Install required Python packages
 echo "Installing required Python packages..."
