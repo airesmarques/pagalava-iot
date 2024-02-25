@@ -28,6 +28,7 @@ fi
 
 # Export the connection string as an environment variable
 export IOT_CONNECTION_STRING
+echo IOT_CONNECTION_STRING=${IOT_CONNECTION_STRING}
 
 
 # Clone the repository

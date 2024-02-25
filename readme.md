@@ -36,7 +36,12 @@ Para o nome de utizador do raspberry, digite: pagalava.
 
 ## Configuração do sistema PagaLava
 Para instalar todos os components do sistema Pagalava, execute o script abaixo:
-curl -sSL https://raw.githubusercontent.com/airesmarques/pagalava-iot/main/setup_pagalava_iot.sh | bash
+
+curl -sSL -o setup_pagalava_iot.sh https://raw.githubusercontent.com/airesmarques/pagalava-iot/main/setup_pagalava_iot.sh
+chmod +x setup_pagalava_iot.sh
+./setup_pagalava_iot.sh
+rm setup_pagalava_iot.sh
+
 
 ## Ligação à Cloud Pagalava
 
