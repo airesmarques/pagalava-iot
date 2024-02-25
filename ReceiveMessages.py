@@ -82,7 +82,7 @@ def main():
     print ("Starting the Python IoT Hub C2D Messaging device sample...")
 
     # Instantiate the client
-    client = IoTHubDeviceClient.create_from_IOT_connection_string(IOT_CONNECTION_STRING)
+    client = IoTHubDeviceClient.create_from_connection_string(IOT_CONNECTION_STRING)
 
     print ("Waiting for C2D messages, press Ctrl-C to exit")
     try:
