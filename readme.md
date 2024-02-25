@@ -25,8 +25,9 @@ Com o Raspberry Pi Imager instalado, pode gravar a imagem do sistema operativo n
 
 ![Exemplo de versão Debian Bullseye](/instructions/Debian_Bullseye_version.png)
 
-### 1.3: Configurar Wi-Fi
+### 1.3: Configurar Wi-Fi e utilizador linux
 
+Para o nome de utizador do raspberry, digite: pagalava.
 É aconselhável configurar as definições da Wi-Fi da loja antes de iniciar o Raspberry Pi pela primeira vez.
 
 ## Preparação do hardware / relés para ativação das máquinas de lavar e secar
@@ -34,6 +35,7 @@ Com o Raspberry Pi Imager instalado, pode gravar a imagem do sistema operativo n
 
 
 ## Configuração do sistema PagaLava
+curl -sSL https://raw.githubusercontent.com/airesmarques/pagalava-iot/main/setup_pagalava_iot.sh | bash
 
 
 

@@ -31,8 +31,3 @@ pip3 install -r requirements.txt
 # Make your main script executable
 chmod +x ReceiveMessages.py
 
-# Add a line to your crontab or rc.local to run your script at boot (optional)
-# crontab -e
-# Add: @reboot python3 /home/pi/your-repository-directory/your-main-script.py
-# OR edit /etc/rc.local and add before 'exit 0':
-# python3 /home/pi/your-repository-directory/your-main-script.py &
