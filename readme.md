@@ -30,7 +30,7 @@ Com o Raspberry Pi Imager instalado, pode gravar a imagem do sistema operativo n
 Para o nome de utizador do raspberry, digite: pagalava.
 É aconselhável configurar as definições da Wi-Fi da loja antes de iniciar o Raspberry Pi pela primeira vez.
 
-## Preparação do hardware / relés para ativação das máquinas de lavar e secar
+## 2: Preparação do hardware / relés para ativação das máquinas de lavar e secar
 
 Nesta versao vamos usar apenas o módulo 2. A Tabela está abaixo 
 
@@ -54,11 +54,15 @@ Nesta versao vamos usar apenas o módulo 2. A Tabela está abaixo
 | Module 2     | 15 - Relay 2-7             | GPIO 19  | 33           |
 | Module 2     | 16 - Relay 2-8             | GPIO 26  | 11           |
 
+Module 2 VCC - Raspberry Pin 4 (VCC 5V)
+Module 2 GND - Raspberry Pin 9 (GND)
+
+
+
 Por exemplo, o relés com indice 9, que é o primeiro do segundo módulo de relés, deverá ser ligado ao GPIO 12, que é o 32 pino do Raspberry.
 
 
 ![Pinout do Raspberry 3-4 e ZeroW](/instructions/raspberry-pi-gpio-pinout.jpg)
-
 
 
 
