@@ -2,11 +2,19 @@
 
 Este guia fornece instruções passo a passo para a instalação e configuração do Raspberry Pi OS Bullseye 64-bit Lite no seu Raspberry Pi.
 
+
+## Pre-requisitos
+
+Raspberry 3, 4, ou ZeroW com HAT Ethernet.
+Cartão SD com pelo menos 4GB.
+Cabo para ligação Ethernet.
+
+
 ## 1. Preparação do dispositivo
 
 ### 1.1: Instalar o Raspberry Pi Imager
 
-Para começar, precisa do Raspberry Pi Imager para escrever a imagem do sistema operacional no cartão SD. Siga os passos:
+Para começar, precisa do Raspberry Pi Imager para escrever a imagem do sistema operativo no cartão SD. Siga os passos:
 
 1. Faça o download do Raspberry Pi Imager a partir do site oficial: [Raspberry Pi Imager](https://www.raspberrypi.org/software/).
 2. Instale o aplicativo no seu computador, seguindo as instruções fornecidas.
@@ -25,10 +33,24 @@ Com o Raspberry Pi Imager instalado, pode gravar a imagem do sistema operativo n
 
 ![Exemplo de versão Debian Bullseye](/instructions/Debian_Bullseye_version.png)
 
-### 1.3: Configurar Wi-Fi e utilizador linux
+### 1.3: Configuração geral 
 
-Para o nome de utizador do raspberry, digite: pagalava.
-É aconselhável configurar as definições da Wi-Fi da loja antes de iniciar o Raspberry Pi pela primeira vez.
+Nome de utizador: pagalava.
+Password: À sua escolha, uma password segura.
+
+Para sistemas em loja, apenas a ligação por Ethernet é suportada.
+Pode usar WiFi para a configuração apenas por comodidade.
+Seleccione o país e teclado.
+
+![Configuração geral](/instructions/Rpi-Imager-General.png)
+
+### 1.4: Serviço SSH
+
+Ative o serviço SSH. Pode usar password para autenticação ou uma chave SSH (recomendado).
+
+![SSH](/instructions/Rpi-Imager-Services.png)
+
+
 
 ## 2: Preparação do hardware / relés para ativação das máquinas de lavar e secar
 
@@ -68,6 +90,9 @@ Por exemplo, o relés com indice 9, que é o primeiro do segundo módulo de rel�
 
 
 ## Configuração do sistema PagaLava
+Localize o Raspberry na sua rede, identificando o endereço IP, e ligue-se ao Raspberry por SSH. 
+
+Não é necessário atualizar o sistema operativo, os updates serão executados no script de instalação.
 Para instalar todos os components do sistema Pagalava, execute o script abaixo:
 
 ```
