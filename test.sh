@@ -2,7 +2,7 @@
 
 # Define the path to the virtual environment and the Python script
 VENVDIR="/path/to/your/.venv"  # Update this path accordingly
-PYTHONSCRIPT="test.py"
+PYTHONSCRIPT="test_script.py"
 
 echo "Escolhe o modulo a testar:"
 #echo "1. Module 1"

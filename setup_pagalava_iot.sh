@@ -67,6 +67,14 @@ deactivate
 # Make the main script executable
 chmod +x "${SCRIPTNAME}"
 
+# Make auxiliary scripts executable
+chmod +x update_pagalava.sh
+chmod +x get_journalctl.sh
+chmod +x stop_service.sh
+chmod +x test.sh
+
+
+
 # Setup the service
 echo "Setting up the systemd service..."
 SERVICEFILE="/etc/systemd/system/${SERVICENAME}"
