@@ -54,8 +54,8 @@ Nesta versao vamos usar apenas o módulo 2. A Tabela está abaixo
 | Module 2     | 15 - Relay 2-7             | GPIO 19  | 33           |
 | Module 2     | 16 - Relay 2-8             | GPIO 26  | 11           |
 
-Module 2 VCC - Raspberry Pin 4 (VCC 5V)
-Module 2 GND - Raspberry Pin 9 (GND)
+Module 2 VCC - Raspberry Pin 4 (VCC 5V).
+Module 2 GND - Raspberry Pin 9 (GND).
 
 
 
@@ -70,31 +70,36 @@ Por exemplo, o relés com indice 9, que é o primeiro do segundo módulo de rel�
 ## Configuração do sistema PagaLava
 Para instalar todos os components do sistema Pagalava, execute o script abaixo:
 
+```
 curl -sSL -o setup_pagalava_iot.sh https://raw.githubusercontent.com/airesmarques/pagalava-iot/main/setup_pagalava_iot.sh
 chmod +x setup_pagalava_iot.sh
 . ./setup_pagalava_iot.sh
 rm setup_pagalava_iot.sh
+```
 
 ### Testar módulos de relés
 
-executar o script:
+executar o script:  
 . ./test.sh
 
 Escolher 2, após esta escolha, sequencialmente cada um dos módulos de relés serão ligados durante 1 segundo
+
 ## Ligação à Cloud Pagalava
 A ligação do Raspberry à Cloud Pagalava é feita durante a instalação, desde que a IOT_CONNECTION_STRING esteja correta.
 
-para verificar a ligação:
+para verificar a ligação:  
 . ./get_journalctl.sh 
 
 O resultado será semelhante às linhas abaixo:
 
+```
 INFO:azure.iot.device.common.mqtt_transport:Creating client for connecting using MQTT over TCP
 INFO:azure.iot.device.iothub.sync_clients:Enabling feature:c2d...
 INFO:azure.iot.device.common.mqtt_transport:Connect using port 8883 (TCP)
 INFO:azure.iot.device.common.mqtt_transport:connected with result code: 0
 INFO:azure.iot.device.common.pipeline.pipeline_stages_mqtt:_on_mqtt_connected called
 INFO:azure.iot.device.iothub.abstract_clients:Connection State - Connected
+```
 
 ## Configuração das máquinas de lavar e secar
 
