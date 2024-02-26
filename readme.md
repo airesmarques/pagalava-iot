@@ -42,9 +42,26 @@ chmod +x setup_pagalava_iot.sh
 . ./setup_pagalava_iot.sh
 rm setup_pagalava_iot.sh
 
+### Testar módulos de relés
 
+executar o script:
+. ./test.sh
+
+Escolher 2, após esta escolha, sequencialmente cada um dos módulos de relés serão ligados durante 1 segundo
 ## Ligação à Cloud Pagalava
+A ligação do Raspberry à Cloud Pagalava é feita durante a instalação, desde que a IOT_CONNECTION_STRING esteja correta.
 
+para verificar a ligação:
+. ./get_journalctl.sh 
+
+O resultado será semelhante às linhas abaixo:
+
+INFO:azure.iot.device.common.mqtt_transport:Creating client for connecting using MQTT over TCP
+INFO:azure.iot.device.iothub.sync_clients:Enabling feature:c2d...
+INFO:azure.iot.device.common.mqtt_transport:Connect using port 8883 (TCP)
+INFO:azure.iot.device.common.mqtt_transport:connected with result code: 0
+INFO:azure.iot.device.common.pipeline.pipeline_stages_mqtt:_on_mqtt_connected called
+INFO:azure.iot.device.iothub.abstract_clients:Connection State - Connected
 
 ## Configuração das máquinas de lavar e secar
 
