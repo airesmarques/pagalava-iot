@@ -15,12 +15,13 @@ import json
 #     14: 16
 # }
 
-used_pins = [9, 10, 11, 12, 13, 14, 15, 16, 20, 21, 17]
+used_pins = [9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 20, 21, 26]
 
 # L2 - Avenida 
 # Maps 
 # Relay : Pin
 relay_pins_v0 = {
+    # Module 1 - WASH
     1: 22,  #WASH
     2: 23,  #WASH
     3: 24,  #WASH
@@ -34,39 +35,11 @@ relay_pins_v0 = {
     10: 16,
     11: 20,
     12: 21,
-    # Module 3 - DRY
     13: 17,
     14: 13,
     15: 19,
     16: 26
 }
-
-# Laundry 101 
-# TODO
-
-
-'''
-Module 1
-11
-12
-13
-14
-15
-16
-17
-18
-Module 2
-21
-22
-23
-24
-Module 3
-31
-32
-33
-34
-'''
-
 
 
 GPIO.setmode(GPIO.BCM)  # Use BCM GPIO numbering
