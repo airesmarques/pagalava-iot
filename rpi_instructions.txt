@@ -1,0 +1,33 @@
+# Instalar raspberry 3-4-ZeroW com a seguinte versao
+# 2023-12-05 bullseye - 64 bit lite
+
+#!/bin/bash
+
+# Update and upgrade Raspberry Pi OS
+sudo apt-get update && sudo apt-get upgrade -y
+
+# Install Git
+sudo apt-get install git -y
+
+# Install Python3 and PIP
+sudo apt-get install python3 python3-pip -y
+
+# Install GPIO library
+sudo apt-get install python3-rpi.gpio -y
+
+# Navigate to your desired directory (modify as needed)
+cd $HOME
+# Was here
+
+# Clone your repository (replace with your repository URL)
+git clone https://github.com/airesmarques/pagalava-iot
+
+# Navigate into the cloned directory (modify as needed)
+cd pagalava-iot
+
+# Install required Python packages
+pip3 install -r requirements.txt
+
+# Make your main script executable
+chmod +x ReceiveMessages.py
+

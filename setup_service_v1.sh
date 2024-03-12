@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Filename: setup_service.sh
+
 # Configuration variables
 USERNAME="pagalava"
 GROUPNAME="pagalava"
