@@ -5,9 +5,14 @@ Este guia fornece instruções passo a passo para a instalação e configuraçã
 
 ## Pre-requisitos
 
-Raspberry 3, 4, ou ZeroW com HAT Ethernet.
-Cartão SD com pelo menos 4GB.
-Cabo para ligação Ethernet.
+1. Raspberry 3, 4, ou ZeroW com HAT Ethernet.
+2. Cartão SD com pelo menos 4GB.
+3. Cabo para ligação Ethernet ao Raspberry.
+4. 1 ou 2 módulos de relés de 8 canais DC 5V
+5. Cabos jumper fêmea-fêmea para ligar o Raspberry ao(s) módulos de relés.
+
+<img src="./instructions/Relay.jpg" width="40%" alt="Exemplo de componente 4 - módulo de relés 8 canais">
+
 
 
 ## 1. Preparação do dispositivo
@@ -63,18 +68,18 @@ Nesta versao vamos usar apenas o módulo 2. A Tabela está abaixo
 | Module 1     | 2 - Relay 1-2              | GPIO 23  | 16           |
 | Module 1     | 3 - Relay 1-3              | GPIO 24  | 18           |
 | Module 1     | 4 - Relay 1-4              | GPIO 25  | 22           |
-| Module 1     | 5 - Relay 1-5              | GPIO 26  | 37           |
+| Module 1     | 5 - Relay 1-5              | GPIO     |              |
 | Module 1     | 6 - Relay 1-6              | GPIO 27  | 13           |
-| Module 1     | 7 - Relay 1-7              | GPIO 17  | 11           |
+| Module 1     | 7 - Relay 1-7              | GPIO     |              |
 | Module 1     | 8 - Relay 1-8              | GPIO 18  | 12           |
 | Module 2     | 9 - Relay 2-1              | GPIO 12  | 32           |
 | Module 2     | 10 - Relay 2-2             | GPIO 16  | 36           |
 | Module 2     | 11 - Relay 2-3             | GPIO 20  | 38           |
 | Module 2     | 12 - Relay 2-4             | GPIO 21  | 40           |
-| Module 2     | 13 - Relay 2-5             | GPIO 17  | 37           |
-| Module 2     | 14 - Relay 2-6             | GPIO 13  | 35           |
-| Module 2     | 15 - Relay 2-7             | GPIO 19  | 33           |
-| Module 2     | 16 - Relay 2-8             | GPIO 26  | 11           |
+| Module 2     | 13 - Relay 2-5             | GPIO 17  | 11           |
+| Module 2     | 14 - Relay 2-6             | GPIO 13  | 33           |
+| Module 2     | 15 - Relay 2-7             | GPIO 19  | 35           |
+| Module 2     | 16 - Relay 2-8             | GPIO 26  | 37           |
 
 Module 2 VCC - Raspberry Pin 4 (VCC 5V).
 Module 2 GND - Raspberry Pin 9 (GND).
@@ -107,7 +112,7 @@ rm setup_pagalava_iot.sh
 executar o script:  
 . ./test.sh
 
-Escolher 2, após esta escolha, sequencialmente cada um dos módulos de relés serão ligados durante 1 segundo
+Escolher m1, m2, ou m3. Após esta escolha, sequencialmente cada um dos módulos de relés serão ligados durante uma fração do tempo de uma ativação convencional. Isto permite verificar se o módulo de relés está montado corretamente.
 
 ## Ligação à Cloud Pagalava
 A ligação do Raspberry à Cloud Pagalava é feita durante a instalação, desde que a IOT_CONNECTION_STRING esteja correta.
@@ -128,9 +133,37 @@ INFO:azure.iot.device.iothub.abstract_clients:Connection State - Connected
 
 ## Configuração das máquinas de lavar e secar
 
-Para já, fazemos por mensagens de WhatsApp :D
-Para o futuro irei criar uma dashboard de configuração.
+Para já, entrar em contacto comigo :D
+No futuro irei criar uma dashboard de configuração.
+
 
 ## Configuração do IfThenPay
 
-Irei documentar o processo daqui a uns dias...
+Irei documentar o resto processo progressivamente... onde é usada a nomenclatura dashboard, atualmente não existindo dashboard, deverá ser tratado com o autor do projecto através do WhatsApp.
+
+
+
+Entrar no Backoffice to IfThenPay com a chave de Backoffice.
+https://backoffice.ifthenpay.com/Account/Login
+
+No menu da esquerda, siga o menu "Contrato".
+Na lista dropdown, escolha a conta MbWay.
+![Conta MbWay](/instructions/IfThenPay_DetalhesDoContrato.png)
+
+Copie o número da conta, neste exemplo QNW-006650. Este deverá ser introduzido na Dashboard Pagalava.
+
+Após gravar o número de conta, é gerada a Chave Antifishing, esta chave é aleatoria. A Chave Antifishing permite ao sistema IfThenPay identificar-se perante o PagaLava para confirmar com segurança de que o pagamento foi efectuado.
+
+
+De seguida iremos ativar a Callback. Introduza o texto em ambos os campos.
+URL de Callback: https://pagalava-services.washstation.io/api/paycallback/mbway?key=[ANTI_PHISHING_KEY]&id=[ID]&amount=[AMOUNT]&payment_datetime=[PAYMENT_DATETIME]&payment_method=[PAYMENT_METHOD]
+
+Chave Anti-Fishing: Chave dada pela dashboard.
+
+Gravar.
+
+
+## Referências
+
+[Hardware Raspberry](https://www.raspberrypi.com/documentation/computers/raspberry-pi.html)
+

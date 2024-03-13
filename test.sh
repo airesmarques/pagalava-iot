@@ -5,18 +5,19 @@ VENVDIR="/path/to/your/.venv"  # Update this path accordingly
 PYTHONSCRIPT="test_script.py"
 
 echo "Escolhe o modulo a testar:"
-#echo "1. Module 1"
-echo "2. Module 2"
-read -p "Introduz a escolha (por enquanto apenas 2): " choice
+echo "m1. Module 1"
+echo "m2. Module 2"
+echo "a. Module 1 and 2"
+read -p "Introduz a escolha: " choice
 
 # Activate the virtual environment
 source "$VENVDIR/bin/activate"
 
-if [ "$choice" = "1" ] || [ "$choice" = "2" ]; then
+if [ "$choice" = "m1" ] || [ "$choice" = "m2" ] || [ "$choice" = "ma" ]; then
     # Run the Python script using the Python executable from the virtual environment
     python "$PYTHONSCRIPT" "$choice"
 else
-    echo "Invalid choice. Please run the script again and choose either 1 or 2."
+    echo "Invalid choice. Please run the script again and choose either m1, m2, ma."
     # Deactivate the virtual environment before exiting
     deactivate
     exit 1
