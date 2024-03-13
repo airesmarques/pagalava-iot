@@ -133,7 +133,7 @@ def activate_machine(
 #
 
 
-def test_all(speed: int = 5):
+def test_all(speed: int = 1):
     for relay_label in relay_to_gpio_map:
         print(f"Testing {relay_label}")
         # Turn on the relay
@@ -145,7 +145,7 @@ def test_all(speed: int = 5):
 
 
 # Test module 1
-def test_module_1(speed: int=5):
+def test_module_1(speed: int=1):
     # List of relays in Module 2
     module_1_relays = [1, 2, 3, 4, 6, 8]
 
@@ -159,7 +159,7 @@ def test_module_1(speed: int=5):
         time.sleep(ACTIVATION_TIME_INTERVAL/speed)
 
 
-def test_module_2(speed: int=5):
+def test_module_2(speed: int=1):
     # List of relays in Module 2
     module_2_relays = [9, 10, 11, 12, 13, 14, 15, 16]
 
