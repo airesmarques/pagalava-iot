@@ -3,30 +3,7 @@ import time
 import json
 
 
-"""
-# L2 - Avenida 
-# Mapas de Reles - GPIO avenida, para documentacao
-relay_gpio_v0 = {
-    # Module 1 - WASH
-    1: 22,  #WASH
-    2: 23,  #WASH
-    3: 24,  #WASH
-    4: 25,  #WASH
-    5: 26,  #WASH
-    6: 27,  #WASH
-    7: 17,  #WASH
-    8: 18,  #WASH
-    # Module 2 - DRY
-    9: 12,
-    10: 16,
-    11: 20,
-    12: 21,
-    13: 17,
-    14: 13,
-    15: 19,
-    16: 26
-}
-"""
+
 
 ACTIVATION_TIME_INTERVAL : int = 2
 ACTIVATION_TIME_DURATION : int = 2
