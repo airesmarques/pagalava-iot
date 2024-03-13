@@ -7,7 +7,7 @@ PYTHONSCRIPT="test_script.py"
 echo "Escolhe o modulo a testar:"
 echo "m1. Module 1"
 echo "m2. Module 2"
-echo "a. Module 1 and 2"
+echo "ma. Module 1 and 2"
 read -p "Introduz a escolha: " choice
 
 # Activate the virtual environment
