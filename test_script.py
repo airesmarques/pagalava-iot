@@ -15,7 +15,7 @@ def main():
     elif module_number == 'm2':
         relay_ops.test_module_2()
     else:
-        print("Invalid module number. Please choose 1 or 2 or a.")
+        print("Invalid module number. Please choose 1 or 2 or ma.")
         sys.exit(1)
 
 if __name__ == '__main__':

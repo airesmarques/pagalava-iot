@@ -117,8 +117,10 @@ Escolher m1, m2, ou m3. Após esta escolha, sequencialmente cada um dos módulos
 ## Ligação à Cloud Pagalava
 A ligação do Raspberry à Cloud Pagalava é feita durante a instalação, desde que a IOT_CONNECTION_STRING esteja correta.
 
-para verificar a ligação:  
+para verificar a ligação:
+```
 . ./get_journalctl.sh 
+```
 
 O resultado será semelhante às linhas abaixo:
 
@@ -130,6 +132,15 @@ INFO:azure.iot.device.common.mqtt_transport:connected with result code: 0
 INFO:azure.iot.device.common.pipeline.pipeline_stages_mqtt:_on_mqtt_connected called
 INFO:azure.iot.device.iothub.abstract_clients:Connection State - Connected
 ```
+
+## Updates do sofrware Pagalava IoT
+Para fazer atualizações ao software, deve executar o comando abaixo:
+
+```
+. update_pagalava.sh
+```
+
+Após a execução, deve fazer um reboot ou reinicializar o servico "receive_messages.service".
 
 ## Configuração das máquinas de lavar e secar
 

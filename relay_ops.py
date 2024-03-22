@@ -3,30 +3,7 @@ import time
 import json
 
 
-"""
-# L2 - Avenida 
-# Mapas de Reles - GPIO avenida, para documentacao
-relay_gpio_v0 = {
-    # Module 1 - WASH
-    1: 22,  #WASH
-    2: 23,  #WASH
-    3: 24,  #WASH
-    4: 25,  #WASH
-    5: 26,  #WASH
-    6: 27,  #WASH
-    7: 17,  #WASH
-    8: 18,  #WASH
-    # Module 2 - DRY
-    9: 12,
-    10: 16,
-    11: 20,
-    12: 21,
-    13: 17,
-    14: 13,
-    15: 19,
-    16: 26
-}
-"""
+
 
 ACTIVATION_TIME_INTERVAL : int = 2
 ACTIVATION_TIME_DURATION : int = 2
@@ -133,7 +110,7 @@ def activate_machine(
 #
 
 
-def test_all(speed: int = 5):
+def test_all(speed: int = 1):
     for relay_label in relay_to_gpio_map:
         print(f"Testing {relay_label}")
         # Turn on the relay
@@ -145,7 +122,7 @@ def test_all(speed: int = 5):
 
 
 # Test module 1
-def test_module_1(speed: int=5):
+def test_module_1(speed: int=1):
     # List of relays in Module 2
     module_1_relays = [1, 2, 3, 4, 6, 8]
 
@@ -159,7 +136,7 @@ def test_module_1(speed: int=5):
         time.sleep(ACTIVATION_TIME_INTERVAL/speed)
 
 
-def test_module_2(speed: int=5):
+def test_module_2(speed: int=1):
     # List of relays in Module 2
     module_2_relays = [9, 10, 11, 12, 13, 14, 15, 16]
 
