@@ -167,6 +167,12 @@ Após gravar o número de conta, é gerada a Chave Antifishing, esta chave é al
 
 
 De seguida iremos ativar a Callback. Introduza o texto em ambos os campos.
+### Sistema de testes.
+
+URL de Callback: https://pagalava-services-dev.washstation.io/api/paycallback/mbway?key=[ANTI_PHISHING_KEY]&id=[ID]&amount=[AMOUNT]&payment_datetime=[PAYMENT_DATETIME]&payment_method=[PAYMENT_METHOD]
+
+
+### Sistema produção.
 URL de Callback: https://pagalava-services.washstation.io/api/paycallback/mbway?key=[ANTI_PHISHING_KEY]&id=[ID]&amount=[AMOUNT]&payment_datetime=[PAYMENT_DATETIME]&payment_method=[PAYMENT_METHOD]
 
 Chave Anti-Fishing: Chave dada pela dashboard.
