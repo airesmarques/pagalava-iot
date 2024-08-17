@@ -2,3 +2,7 @@
 __pycache__/*
 config.json
 .env
+.env.101
+.env.992
+.env.999
+.env.prod.02
