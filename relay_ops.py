@@ -1,3 +1,7 @@
+"""
+Filename: relay_ops.py
+"""
+
 import RPi.GPIO as GPIO
 import time
 import json
@@ -35,8 +39,15 @@ GPIO.setmode(GPIO.BCM)  # Use BCM GPIO numbering
 GPIO.setup(used_gpio, GPIO.OUT, initial=GPIO.HIGH)
 
 
-def relay_mapping(
-    file_path='config.json'):
+# Load the relay mapping once at the start of the program
+relay_mapping_data = {}
+
+
+# Load the relay mapping once at the start of the program
+relay_mapping_data = {}
+
+
+def load_relay_mapping(file_path='config.json'):
     """
     Loads relay mapping from a JSON configuration file and converts it into a dictionary with integer keys and values.
 
@@ -59,17 +70,20 @@ def relay_mapping(
         print("Invalid format in config.json. Keys and values must be convertible to integers.")
         return {}
 
-def get_relay_number(
-    machine_id : int,
-    file_path='config.json'):
-    """
-    Retrieves the relay number for a given machine number using the relay mapping from a JSON configuration file.
 
-    :param machine_number: The machine number for which to retrieve the relay number.
-    :param file_path: The path to the configuration JSON file.
-    :return: The relay number corresponding to the given machine number, or None if not found.
+# Load relay mapping at the beginning
+relay_mapping_data = load_relay_mapping()
+
+def get_relay_number(
+    machine_id: int,
+    mapping=relay_mapping_data):
     """
-    mapping = relay_mapping(file_path)
+    Retrieves the relay number for a given machine number using the relay mapping.
+
+    :param machine_id: The machine ID for which to retrieve the relay number.
+    :param mapping: The preloaded relay mapping.
+    :return: The relay number corresponding to the given machine ID, or None if not found.
+    """
     return mapping.get(machine_id, None)
 
 
