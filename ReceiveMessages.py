@@ -54,6 +54,7 @@ def message_activate(json_data: dict):
 def message_handler(message):
     global RECEIVED_MESSAGES
     RECEIVED_MESSAGES += 1
+    start_time = time.time()
     print("")
     print("Message received:")
 
@@ -80,7 +81,8 @@ def message_handler(message):
     
  
     print("Total calls received: {}".format(RECEIVED_MESSAGES))
-    
+    print(f"Processing time: {time.time() - start_time} seconds")
+
 def main():
     print ("Starting the Python IoT Hub C2D Messaging device sample...")
 
