@@ -76,12 +76,22 @@ def message_handler(message):
         message_wake_up()
     elif msg_type == 'activate':
         message_activate(json_data)
+    elif msg_type == 'reboot':
+        message_reboot()
+    elif msg_type == 'upgrade':
+        message_upgrade()
     else:
         print("Unknown message type")
     
  
     print("Total calls received: {}".format(RECEIVED_MESSAGES))
     print(f"Processing time: {time.time() - start_time} seconds")
+
+def message_reboot():
+    pass
+
+def message_upgrade():
+    pass
 
 def main():
     print ("Starting the Python IoT Hub C2D Messaging device sample...")

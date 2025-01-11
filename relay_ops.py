@@ -6,21 +6,26 @@ import RPi.GPIO as GPIO
 import time
 import json
 
+# Custom Exception
+class MachineNotConfiguredException(Exception):
+    """Exception raised when a machine is not configured in the relay mapping."""
+    def __init__(self, machine_id, message="Machine ID is not configured in the relay mapping."):
+        self.machine_id = machine_id
+        self.message = f"{message} Machine ID: {machine_id}"
+        super().__init__(self.message)
 
 
-
-ACTIVATION_TIME_INTERVAL : int = 2
-ACTIVATION_TIME_DURATION : int = 2
-
+ACTIVATION_TIME_INTERVAL: int = 2
+ACTIVATION_TIME_DURATION: int = 2
 
 relay_to_gpio_map = {
     # Module 1 - WASH
-    1: 22,  #WASH
-    2: 23,  #WASH
-    3: 24,  #WASH
-    4: 25,  #WASH
-    6: 27,  #WASH
-    8: 18,  #WASH
+    1: 22,  # WASH
+    2: 23,  # WASH
+    3: 24,  # WASH
+    4: 25,  # WASH
+    6: 27,  # WASH
+    8: 18,  # WASH
     # Module 2 - DRY
     9: 12,
     10: 16,
@@ -34,14 +39,8 @@ relay_to_gpio_map = {
 
 used_gpio = list(relay_to_gpio_map.values())
 
-
 GPIO.setmode(GPIO.BCM)  # Use BCM GPIO numbering
 GPIO.setup(used_gpio, GPIO.OUT, initial=GPIO.HIGH)
-
-
-# Load the relay mapping once at the start of the program
-relay_mapping_data = {}
-
 
 # Load the relay mapping once at the start of the program
 relay_mapping_data = {}
@@ -74,6 +73,7 @@ def load_relay_mapping(file_path='config.json'):
 # Load relay mapping at the beginning
 relay_mapping_data = load_relay_mapping()
 
+
 def get_relay_number(
     machine_id: int,
     mapping=relay_mapping_data):
@@ -91,32 +91,38 @@ def get_relay_number(
 def control_relay(
     relay_number: int,
     state):
-
     gpio = relay_to_gpio_map[relay_number]
     
-    log_str = f"Relay number: {relay_number} - GPIO: {gpio} - State:{state}"
+    log_str = f"Relay number: {relay_number} - GPIO: {gpio} - State: {state}"
     print(log_str)
     
     GPIO.output(gpio, state)
 
-    #GPIO.cleanup()
+    # GPIO.cleanup()
 
 
 def activate_machine(
     machine_id: int,
     number_of_impulses: int = 1):
-    # Setup GPIO
-    
+    """
+    Activates a machine by controlling its relay.
+
+    :param machine_id: The ID of the machine to activate.
+    :param number_of_impulses: Number of times to activate the machine.
+    :raises MachineNotConfiguredException: If the machine_id is not found in the relay mapping.
+    """
     relay_number = get_relay_number(machine_id)
     
-    for i in range(number_of_impulses):   
+    if relay_number is None:
+        raise MachineNotConfiguredException(machine_id)
+    
+    for i in range(number_of_impulses):
         # Activate the machine by setting the relay to the energized state (low)
         control_relay(relay_number, GPIO.LOW)
         # Deactivate after 2 seconds
         time.sleep(ACTIVATION_TIME_DURATION)
         control_relay(relay_number, GPIO.HIGH)
         time.sleep(ACTIVATION_TIME_INTERVAL)
-
 
 
 #
@@ -129,28 +135,28 @@ def test_all(speed: int = 1):
         print(f"Testing {relay_label}")
         # Turn on the relay
         control_relay(relay_label, GPIO.LOW)
-        time.sleep(ACTIVATION_TIME_DURATION/speed)
+        time.sleep(ACTIVATION_TIME_DURATION / speed)
         # Turn off the relay
         control_relay(relay_label, GPIO.HIGH)
-        time.sleep(ACTIVATION_TIME_INTERVAL/speed)
+        time.sleep(ACTIVATION_TIME_INTERVAL / speed)
 
 
 # Test module 1
 def test_module_1(speed: int=1):
-    # List of relays in Module 2
+    # List of relays in Module 1
     module_1_relays = [1, 2, 3, 4, 6, 8]
 
     for relay_label in module_1_relays:
         print(f"Testing {relay_label} in Module 1")
         # Turn on the relay
         control_relay(relay_label, GPIO.LOW)
-        time.sleep(ACTIVATION_TIME_DURATION/speed)
+        time.sleep(ACTIVATION_TIME_DURATION / speed)
         # Turn off the relay
         control_relay(relay_label, GPIO.HIGH)
-        time.sleep(ACTIVATION_TIME_INTERVAL/speed)
+        time.sleep(ACTIVATION_TIME_INTERVAL / speed)
 
 
-def test_module_2(speed: int=1):
+def test_module_2(speed: int = 1):
     # List of relays in Module 2
     module_2_relays = [9, 10, 11, 12, 13, 14, 15, 16]
 
@@ -158,9 +164,9 @@ def test_module_2(speed: int=1):
         print(f"Testing {relay_label} in Module 2")
         # Turn on the relay
         control_relay(relay_label, GPIO.LOW)
-        time.sleep(ACTIVATION_TIME_DURATION/speed)
+        time.sleep(ACTIVATION_TIME_DURATION / speed)
         # Turn off the relay
         control_relay(relay_label, GPIO.HIGH)
-        time.sleep(ACTIVATION_TIME_INTERVAL/speed)
+        time.sleep(ACTIVATION_TIME_INTERVAL / speed)
 
     
