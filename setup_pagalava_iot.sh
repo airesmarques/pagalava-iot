@@ -93,6 +93,13 @@ Environment="PATH=${VENVDIR}/bin"
 Environment="IOT_CONNECTION_STRING=${IOT_CONNECTION_STRING}"
 ExecStart=${VENVDIR}/bin/python ${WORKINGDIR}/${SCRIPTNAME}
 
+# Restart settings
+Restart=on-failure
+RestartSec=5s
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+
 [Install]
 WantedBy=multi-user.target
 EOF
