@@ -1,0 +1,17 @@
+{
+    "1": {
+        "machine_id": "1",
+        "relay_number": "1",
+        "time_relay_ms": "2000"
+    },
+    "2": {
+        "machine_id": "2",
+        "relay_number": "2",
+        "time_relay_ms": "5000"
+    },
+    "3": {
+        "machine_id": "3",
+        "relay_number": "3",
+        "time_relay_ms": "2300"
+    }
+}

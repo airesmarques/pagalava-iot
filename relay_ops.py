@@ -108,6 +108,51 @@ def load_relay_mapping_v1_1(file_path='config.json'):
         return {}
 
 
+def load_relay_mapping_v1_2(file_path='config.json'):
+    """
+    Loads relay mapping from a JSON configuration file with the v1.2 schema.
+    The schema includes:
+    {
+        '1': {
+            'machine_id': '1', 
+            'relay_number': '1', 
+            'time_relay_ms': '2000',
+            'interval_between_impulses_ms': '1000',
+            'number_of_impulses_activation': '1'
+        },
+        ...
+    }
+
+    :param file_path: The path to the configuration JSON file.
+    :return: A dictionary with machine_id as keys and configuration details as values.
+    """
+    try:
+        with open(file_path, 'r') as file:
+            config = json.load(file)
+            # Convert string keys and values to appropriate types
+            relay_mapping = {}
+            for key, value in config.items():
+                machine_id = int(key)
+                relay_data = {
+                    'machine_id': int(value['machine_id']),
+                    'relay_number': int(value['relay_number']),
+                    'time_relay_ms': int(value['time_relay_ms']),
+                    'interval_between_impulses_ms': int(value['interval_between_impulses_ms']),
+                    'number_of_impulses_activation': int(value['number_of_impulses_activation'])
+                }
+                relay_mapping[machine_id] = relay_data
+            return relay_mapping
+    except FileNotFoundError:
+        print(f"File not found: {file_path}")
+        return {}
+    except json.JSONDecodeError:
+        print(f"Error decoding JSON from file: {file_path}")
+        return {}
+    except (ValueError, KeyError) as e:
+        print(f"Invalid format in config.json: {str(e)}")
+        return {}
+
+
 # Load relay mapping at the beginning
 #relay_mapping_data = load_relay_mapping()
 
@@ -137,6 +182,18 @@ def get_relay_info_v1_1(machine_id: int):
     """
     # Load relay mapping to allow for real-time changes without restart
     relay_mapping_data = load_relay_mapping_v1_1()
+    return relay_mapping_data.get(machine_id, None)
+
+
+def get_relay_info_v1_2(machine_id: int):
+    """
+    Retrieves the relay information for a given machine ID using the v1.2 relay mapping.
+
+    :param machine_id: The machine ID for which to retrieve the relay information.
+    :return: A dictionary containing relay details, or None if not found.
+    """
+    # Load relay mapping to allow for real-time changes without restart
+    relay_mapping_data = load_relay_mapping_v1_2()
     return relay_mapping_data.get(machine_id, None)
 
 
@@ -205,6 +262,63 @@ def activate_machine_v1_1(machine_id: int, number_of_impulses: int = 1):
         time.sleep(activation_duration)
         control_relay(relay_number, GPIO.HIGH)
         time.sleep(ACTIVATION_TIME_INTERVAL)
+
+
+def activate_machine_v1_2(
+    machine_id: int,
+    number_of_impulses: int = 1
+    ):  
+    """
+    Activates a machine by controlling its relay with the specified parameters.
+    
+    This version uses the enhanced configuration with:
+    - Configurable time for each relay activation
+    - Configurable interval between impulses from config.json
+    - Support for machines that need multiple impulses per single activation
+
+    :param machine_id: The ID of the machine to activate.
+    :param number_of_impulses: Total number of activations requested (multiplied by impulses_per_activation).
+    :param interval_between_impulses_ms: Optional override (not used in standard implementation).
+    :raises MachineNotConfiguredException: If the machine_id is not found in the relay mapping.
+    """
+    relay_info = get_relay_info_v1_2(machine_id)
+    
+    if relay_info is None:
+        raise MachineNotConfiguredException(machine_id)
+    
+    relay_number = relay_info['relay_number']
+    # Get configuration values with defaults
+    time_relay_ms = relay_info.get('time_relay_ms', 2000)
+    impulses_per_activation = relay_info.get('number_of_impulses_activation', 1)
+    
+    # Calculate actual number of impulses needed based on the configuration
+    total_impulses = number_of_impulses * impulses_per_activation
+    
+    # Get interval between impulses from configuration
+    if 'interval_between_impulses_ms' in relay_info:
+        # Use the value from config
+        interval_between_impulses = relay_info['interval_between_impulses_ms'] / 1000.0
+    else:
+        # Default to the global constant if not specified in config
+        interval_between_impulses = ACTIVATION_TIME_INTERVAL
+    
+    # Convert milliseconds to seconds for the sleep function
+    activation_duration = time_relay_ms / 1000.0
+    
+    print(f"Activating machine {machine_id}: {total_impulses} total impulses "
+          f"({number_of_impulses} activations × {impulses_per_activation} impulses/activation)")
+    print(f"Relay: {relay_number}, Duration: {time_relay_ms}ms, Interval: {interval_between_impulses*1000}ms")
+    
+    for i in range(total_impulses):
+        # Activate the machine by setting the relay to the energized state (low)
+        control_relay(relay_number, GPIO.LOW)
+        # Deactivate after the specified duration
+        time.sleep(activation_duration)
+        control_relay(relay_number, GPIO.HIGH)
+        
+        # Only sleep between impulses if there are more impulses to be sent
+        if i < total_impulses - 1:
+            time.sleep(interval_between_impulses)
 
 
 #

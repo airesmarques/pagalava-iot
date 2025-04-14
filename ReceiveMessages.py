@@ -21,7 +21,8 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-VERSION = "1.1.0"
+VERSION = "1.2"
+#VERSION = "1.1.0"
 #VERSION = "1.0"
 RECEIVED_MESSAGES = 0
 
@@ -75,9 +76,16 @@ def message_activate(json_data: dict):
                 machine_id=machine_id,
                 number_of_impulses=number_of_impulses
             )
+        elif VERSION.startswith("1.2"):
+            logging.info("%s: Using v1.2 activation method", func_name)
+            # Don't pass interval_between_impulses_ms as it comes from config, not the message
+            relay_ops.activate_machine_v1_2(
+                machine_id=machine_id,
+                number_of_impulses=number_of_impulses
+            )
         else:
-            logging.warning("%s: Unknown version %s, defaulting to v1.1 activation", func_name, VERSION)
-            relay_ops.activate_machine_v1_1(
+            logging.warning("%s: Unknown version %s, defaulting to v1.2 activation", func_name, VERSION)
+            relay_ops.activate_machine_v1_2(
                 machine_id=machine_id,
                 number_of_impulses=number_of_impulses
             )
