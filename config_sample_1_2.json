@@ -1,0 +1,23 @@
+{
+    "1": {
+        "machine_id": "1",
+        "relay_number": "1",
+        "time_relay_ms": "2000",
+        "interval_between_impulses_ms": "1000",
+        "number_of_impulses_activation": "1"
+    },
+    "2": {
+        "machine_id": "2",
+        "relay_number": "2",
+        "time_relay_ms": "2000",
+        "interval_between_impulses_ms": "2000",
+        "number_of_impulses_activation": "5"
+    },
+    "3": {
+        "machine_id": "3",
+        "relay_number": "3",
+        "time_relay_ms": "500",
+        "interval_between_impulses_ms": "500",
+        "number_of_impulses_activation": "3"
+    }
+}
