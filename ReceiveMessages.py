@@ -5,6 +5,9 @@ import logging
 import os
 import time
 import json
+import re
+import requests
+import subprocess
 
 from dotenv import load_dotenv
 from azure.iot.device import IoTHubDeviceClient
@@ -32,6 +35,29 @@ if not IOT_CONNECTION_STRING:
     logging.error("IOT_CONNECTION_STRING not found in environment variables.")
     exit(1)
 print("Connection String: %s...%s" % (IOT_CONNECTION_STRING[:5], IOT_CONNECTION_STRING[-5:]))  # Partially display for security
+
+# Extract device ID from connection string
+def get_device_id():
+    """Extract the device ID from the IoT Hub connection string."""
+    match = re.search(r'DeviceId=([^;]+)', IOT_CONNECTION_STRING)
+    if match:
+        return match.group(1)
+    return "unknown_device"
+
+DEVICE_ID = get_device_id()
+
+def determine_environment():
+    """Determine if this is a dev or prod environment from the connection string."""
+    if "-dev" in IOT_CONNECTION_STRING:
+        return {
+            "env": "dev",
+            "url": "digipay2-dashboard-dev.azurewebsites.net"
+        }
+    else:
+        return {
+            "env": "prod",
+            "url": "digipay2-dashboard.azurewebsites.net"
+        }
 
 def message_configure(config_data: dict):
     func_name = "message_configure"
@@ -78,7 +104,6 @@ def message_activate(json_data: dict):
             )
         elif VERSION.startswith("1.2"):
             logging.info("%s: Using v1.2 activation method", func_name)
-            # Don't pass interval_between_impulses_ms as it comes from config, not the message
             relay_ops.activate_machine_v1_2(
                 machine_id=machine_id,
                 number_of_impulses=number_of_impulses
@@ -107,13 +132,95 @@ def message_reboot():
     # Implement reboot logic here
 
 def message_upgrade():
+    """
+    Handle the upgrade message by pulling the latest code from GitHub.
+    Uses the update_pagalava.sh script to fetch and update the codebase.
+    """
     func_name = "message_upgrade"
     logging.info("%s: Upgrade command received.", func_name)
-    # Implement upgrade logic here
+    
+    try:
+        # Log the upgrade attempt
+        logging.info("%s: Starting upgrade process by running update_pagalava.sh", func_name)
+        
+        # Run the update script
+        result = subprocess.run(
+            ["bash", "update_pagalava.sh"], 
+            capture_output=True, 
+            text=True, 
+            check=True
+        )
+        
+        # Log the results
+        logging.info("%s: Upgrade completed successfully", func_name)
+        logging.info("%s: Script output: %s", func_name, result.stdout)
+        
+        # Notify about restart requirement
+        logging.info("%s: System will need to be restarted to apply updates", func_name)
+        
+        # You might want to schedule a restart after a short delay
+        # to allow this message to be sent/logged
+        subprocess.Popen(["sleep", "5", "&&", "sudo", "reboot"], 
+                         shell=True,
+                         stdout=subprocess.PIPE,
+                         stderr=subprocess.PIPE)
+        
+        return True
+    except subprocess.SubprocessError as e:
+        logging.error("%s: Upgrade failed - %s", func_name, e)
+        if hasattr(e, 'output'):
+            logging.error("%s: Script output: %s", func_name, e.output)
+        if hasattr(e, 'stderr'):
+            logging.error("%s: Error output: %s", func_name, e.stderr)
+        return False
+    except Exception as e:
+        logging.error("%s: Unexpected error during upgrade - %s", func_name, e)
+        return False
 
-def message_version():
+def message_version(json_data: dict):
+    """
+    Handle the get_version message and respond with version information.
+    The token is simply echoed back for verification by the backend.
+    
+    :param json_data: The JSON data from the message
+    """
     func_name = "message_version"
-    logging.info("%s: Version command received", func_name)
+    logging.info("%s: Version request received", func_name)
+    
+    # Extract token from the message
+    token = json_data.get("token", "")
+    
+    # Prepare response with device version and echoed token
+    response = {
+        "msg_type": "version_info",
+        "device_id": DEVICE_ID,
+        "device_version": VERSION,
+        "echo_token": token
+    }
+    
+    # Log the response being sent
+    logging.info("%s: Sending version info response: %s", func_name, response)
+    
+    # Send the response directly to the cloud API
+    env_info = determine_environment()
+    url = f"https://{env_info['url']}/api/device/version-info"
+    
+    headers = {
+        'Content-Type': 'application/json'
+    }
+    
+    try:
+        response_obj = requests.post(url, json=response, headers=headers)
+        if response_obj.status_code == 200:
+            logging.info("%s: Version info successfully sent", func_name)
+            return True
+        else:
+            logging.error("%s: Failed to send version info. Status code: %s, Response: %s", 
+                         func_name, response_obj.status_code, response_obj.text)
+            return False
+    except Exception as e:
+        logging.error("%s: Error sending version info: %s", func_name, e)
+        return False
 
 def message_handler(message):
     global RECEIVED_MESSAGES
@@ -155,8 +262,8 @@ def message_handler(message):
         message_reboot()
     elif msg_type == 'upgrade':
         message_upgrade()
-    elif msg_type == 'version':
-        message_version()
+    elif msg_type == 'get_version':
+        message_version(json_data)
     else:
         logging.warning("message_handler: Unknown message type '%s'", msg_type)
     
