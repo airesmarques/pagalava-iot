@@ -260,7 +260,7 @@ def message_handler(message):
         message_activate(json_data)
     elif msg_type == 'reboot':
         message_reboot()
-    elif msg_type == 'upgrade':
+    elif msg_type == 'upgrade' or msg_type == 'request_upgrade':
         message_upgrade()
     elif msg_type == 'get_version':
         message_version(json_data)
