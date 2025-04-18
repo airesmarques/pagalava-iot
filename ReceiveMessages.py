@@ -143,9 +143,18 @@ def message_upgrade():
         # Log the upgrade attempt
         logging.info("%s: Starting upgrade process by running update_pagalava.sh", func_name)
         
-        # Run the update script
+        # Use absolute path for bash and script
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        update_script_path = os.path.join(script_dir, "update_pagalava.sh")
+        
+        # Check if script exists
+        if not os.path.exists(update_script_path):
+            logging.error("%s: Update script not found at %s", func_name, update_script_path)
+            return False
+        
+        # Run the update script with absolute path to bash
         result = subprocess.run(
-            ["bash", "update_pagalava.sh"], 
+            ["/bin/bash", update_script_path], 
             capture_output=True, 
             text=True, 
             check=True
@@ -158,12 +167,13 @@ def message_upgrade():
         # Notify about restart requirement
         logging.info("%s: System will need to be restarted to apply updates", func_name)
         
-        # You might want to schedule a restart after a short delay
-        # to allow this message to be sent/logged
-        subprocess.Popen(["sleep", "5", "&&", "sudo", "reboot"], 
-                         shell=True,
-                         stdout=subprocess.PIPE,
-                         stderr=subprocess.PIPE)
+        # Schedule restart using absolute paths
+        subprocess.Popen(
+            ["/bin/sleep", "5", "&&", "/usr/bin/sudo", "/usr/sbin/reboot"], 
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
         
         return True
     except subprocess.SubprocessError as e:
