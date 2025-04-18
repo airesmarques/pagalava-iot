@@ -152,6 +152,12 @@ def message_upgrade():
             logging.error("%s: Update script not found at %s", func_name, update_script_path)
             return False
         
+        # Check if git is installed
+        git_path = "/usr/bin/git"
+        if not os.path.exists(git_path):
+            logging.error("%s: Git executable not found at %s", func_name, git_path)
+            return False
+        
         # Run the update script with absolute path to bash
         result = subprocess.run(
             ["/bin/bash", update_script_path], 
@@ -169,8 +175,7 @@ def message_upgrade():
         
         # Schedule restart using absolute paths
         subprocess.Popen(
-            ["/bin/sleep", "5", "&&", "/usr/bin/sudo", "/usr/sbin/reboot"], 
-            shell=True,
+            ["sudo", "systemctl", "restart", "receive_messages.service"],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
         )

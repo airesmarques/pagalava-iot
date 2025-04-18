@@ -1,3 +1,3 @@
-git fetch --all
-git reset --hard origin/main
-git pull origin main
+/usr/bin/git fetch --all
+/usr/bin/git reset --hard origin/main
+/usr/bin/git pull origin main
