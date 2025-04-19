@@ -207,10 +207,9 @@ def message_version(json_data: dict):
     
     # Prepare response with device version and echoed token
     response = {
-        "msg_type": "version_info",
         "device_id": DEVICE_ID,
         "device_version": VERSION,
-        "echo_token": token
+        "token": token
     }
     
     # Log the response being sent
@@ -218,7 +217,7 @@ def message_version(json_data: dict):
     
     # Send the response directly to the cloud API
     env_info = determine_environment()
-    url = f"https://{env_info['url']}/api/device/version-info"
+    url = f"https://{env_info['url']}/api/laundries/device_version_callback"
     
     headers = {
         'Content-Type': 'application/json'
