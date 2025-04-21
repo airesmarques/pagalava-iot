@@ -219,12 +219,19 @@ def message_version(json_data: dict):
     env_info = determine_environment()
     url = f"https://{env_info['url']}/api/laundries/device_version_callback"
     
+    # Log the URL we're sending to
+    logging.info("%s: Sending request to endpoint: %s", func_name, url)
+    logging.info("%s: Environment: %s", func_name, env_info['env'])
+    
     headers = {
         'Content-Type': 'application/json'
     }
     
     try:
+        logging.info("%s: Initiating POST request...", func_name)
         response_obj = requests.post(url, json=response, headers=headers)
+        logging.info("%s: Request completed with status code: %s", func_name, response_obj.status_code)
+        
         if response_obj.status_code == 200:
             logging.info("%s: Version info successfully sent", func_name)
             return True
@@ -232,6 +239,15 @@ def message_version(json_data: dict):
             logging.error("%s: Failed to send version info. Status code: %s, Response: %s", 
                          func_name, response_obj.status_code, response_obj.text)
             return False
+    except requests.exceptions.ConnectionError as e:
+        logging.error("%s: Connection error sending version info: %s", func_name, e)
+        return False
+    except requests.exceptions.Timeout as e:
+        logging.error("%s: Timeout error sending version info: %s", func_name, e)
+        return False
+    except requests.exceptions.RequestException as e:
+        logging.error("%s: Request error sending version info: %s", func_name, e)
+        return False
     except Exception as e:
         logging.error("%s: Error sending version info: %s", func_name, e)
         return False
