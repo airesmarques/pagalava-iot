@@ -48,16 +48,23 @@ DEVICE_ID = get_device_id()
 
 def determine_environment():
     """Determine if this is a dev or prod environment from the connection string."""
-    if "-dev" in IOT_CONNECTION_STRING:
-        return {
-            "env": "dev",
-            "url": "digipay2-dashboard-dev.azurewebsites.net"
-        }
-    else:
-        return {
-            "env": "prod",
-            "url": "digipay2-dashboard.azurewebsites.net"
-        }
+    # Extract the hostname from the connection string
+    match = re.search(r'HostName=([^;]+)', IOT_CONNECTION_STRING)
+    if match:
+        hostname = match.group(1)
+        # Check specifically for "IoTHub-dev" in the hostname
+        # instead of just "-dev" anywhere in the connection string
+        if "IoTHub-dev" in hostname:
+            return {
+                "env": "dev",
+                "url": "digipay2-dashboard-dev.azurewebsites.net"
+            }
+    
+    # Default to production if no dev indicator found or hostname couldn't be parsed
+    return {
+        "env": "prod",
+        "url": "digipay2-dashboard.azurewebsites.net"
+    }
 
 def message_configure(config_data: dict):
     func_name = "message_configure"
