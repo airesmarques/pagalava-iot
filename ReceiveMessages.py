@@ -24,9 +24,27 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-VERSION = "1.2"
-#VERSION = "1.1.0"
-#VERSION = "1.0"
+# Read version from external file
+def get_version():
+    """Read version information from the external version.json file"""
+    try:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        version_file_path = os.path.join(script_dir, "version.json")
+        
+        if os.path.exists(version_file_path):
+            with open(version_file_path, 'r') as file:
+                version_data = json.load(file)
+                return version_data.get('version', '1.0')
+        else:
+            logging.warning("Version file not found at %s, using default version", version_file_path)
+            return '1.0'  # Default version if file not found
+    except Exception as e:
+        logging.error("Failed to read version file: %s", str(e))
+        return '1.0'  # Default version if there's an error
+
+VERSION = get_version()
+logging.info("Running with version: %s", VERSION)
+
 RECEIVED_MESSAGES = 0
 
 # Retrieve the IoT Hub connection string from environment variables
@@ -259,6 +277,48 @@ def message_version(json_data: dict):
         logging.error("%s: Error sending version info: %s", func_name, e)
         return False
 
+def message_diagnostic(json_data: dict):
+    """
+    Manipula mensagens de diagnóstico, gravando o código de verificação num ficheiro.
+    
+    :param json_data: O JSON da mensagem contendo o código de verificação
+    """
+    func_name = "message_diagnostic"
+    logging.info("%s: Mensagem de diagnóstico recebida", func_name)
+    
+    verification_code = json_data.get("verification_code")
+    if not verification_code:
+        logging.error("%s: Código de verificação não encontrado na mensagem", func_name)
+        return False
+    
+    # Pasta para ficheiros temporários
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    diagnostic_dir = os.path.join(script_dir, "diagnostics")
+    
+    # Criar pasta se não existir
+    if not os.path.exists(diagnostic_dir):
+        try:
+            os.makedirs(diagnostic_dir)
+            logging.info("%s: Pasta de diagnóstico criada", func_name)
+        except Exception as e:
+            logging.error("%s: Falha ao criar pasta de diagnóstico - %s", func_name, e)
+            return False
+    
+    # Gravar o código num ficheiro
+    verification_file = os.path.join(diagnostic_dir, "verification_code.txt")
+    try:
+        with open(verification_file, 'w') as file:
+            file.write(verification_code)
+        
+        # Configurar permissões para que diagnóstico possa ler e apagar
+        os.chmod(verification_file, 0o666)  
+        
+        logging.info("%s: Código de verificação gravado em %s", func_name, verification_file)
+        return True
+    except Exception as e:
+        logging.error("%s: Falha ao gravar código de verificação - %s", func_name, e)
+        return False
+
 def message_handler(message):
     global RECEIVED_MESSAGES
     RECEIVED_MESSAGES += 1
@@ -301,6 +361,8 @@ def message_handler(message):
         message_upgrade()
     elif msg_type == 'get_version':
         message_version(json_data)
+    elif msg_type == 'diagnostic':
+        message_diagnostic(json_data)
     else:
         logging.warning("message_handler: Unknown message type '%s'", msg_type)
     

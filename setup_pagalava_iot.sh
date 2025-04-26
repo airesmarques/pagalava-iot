@@ -30,6 +30,9 @@ fi
 export IOT_CONNECTION_STRING
 echo IOT_CONNECTION_STRING=${IOT_CONNECTION_STRING}
 
+# Guardar a connection string num ficheiro .env para persistência
+echo "IOT_CONNECTION_STRING=\"${IOT_CONNECTION_STRING}\"" > "${WORKINGDIR}/.env"
+chmod 600 "${WORKINGDIR}/.env"  # Restringir permissões por segurança
 
 # Clone the repository
 echo "Cloning or updating the Pagalava repository..."
@@ -72,6 +75,7 @@ chmod +x update_pagalava.sh
 chmod +x get_journalctl.sh
 chmod +x stop_service.sh
 chmod +x test.sh
+chmod +x diagnosticos.sh 
 
 
 
