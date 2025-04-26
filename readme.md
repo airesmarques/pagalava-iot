@@ -100,7 +100,7 @@ Localize o Raspberry na sua rede, identificando o endereço IP, e ligue-se ao Ra
 Não é necessário atualizar o sistema operativo, os updates serão executados no script de instalação.
 Para instalar todos os components do sistema Pagalava, execute o script abaixo:
 
-```
+```bash
 curl -sSL -o setup_pagalava_iot.sh https://raw.githubusercontent.com/airesmarques/pagalava-iot/main/setup_pagalava_iot.sh
 chmod +x setup_pagalava_iot.sh
 . ./setup_pagalava_iot.sh
@@ -108,9 +108,13 @@ rm setup_pagalava_iot.sh
 ```
 
 ### Testar módulos de relés
+Atenção: este script não testa a conectividade com a cloud PagaLava, apenas verifica se os relés estão na sequência correta e bem ligados ao Raspberry.
 
 executar o script:  
+```bash
 . ./test.sh
+```
+
 
 Escolher m1, m2, ou m3. Após esta escolha, sequencialmente cada um dos módulos de relés serão ligados durante uma fração do tempo de uma ativação convencional. Isto permite verificar se o módulo de relés está montado corretamente.
 
@@ -118,7 +122,7 @@ Escolher m1, m2, ou m3. Após esta escolha, sequencialmente cada um dos módulos
 A ligação do Raspberry à Cloud Pagalava é feita durante a instalação, desde que a IOT_CONNECTION_STRING esteja correta.
 
 para verificar a ligação:
-```
+```bash
 . ./get_journalctl.sh 
 ```
 
@@ -136,8 +140,8 @@ INFO:azure.iot.device.iothub.abstract_clients:Connection State - Connected
 ## Updates do sofrware Pagalava IoT
 Para fazer atualizações ao software, deve executar o comando abaixo:
 
-```
-. update_pagalava.sh
+```bash
+. ./update_pagalava.sh
 ```
 
 Após a execução, deve fazer um reboot ou reinicializar o servico "receive_messages.service".
@@ -147,30 +151,15 @@ Após a execução, deve fazer um reboot ou reinicializar o servico "receive_mes
 Para já, entrar em contacto comigo :D
 No futuro irei criar uma dashboard de configuração.
 
-
 ## Configuração do IfThenPay
 
-Irei documentar o resto processo progressivamente... onde é usada a nomenclatura dashboard, atualmente não existindo dashboard, deverá ser tratado com o autor do projecto através do WhatsApp.
+Para fazer a configuração do IfThenPay, basta seguir as instruções na dashboard da cloud PagaLava, na seção Proprietário.
 
+### Configuração da Callback
 
-
-Entrar no Backoffice to IfThenPay com a chave de Backoffice.
-https://backoffice.ifthenpay.com/Account/Login
-
-No menu da esquerda, siga o menu "Contrato".
-Na lista dropdown, escolha a conta MbWay.
-![Conta MbWay](/instructions/IfThenPay_DetalhesDoContrato.png)
-
-Copie o número da conta, neste exemplo QNW-006650. Este deverá ser introduzido na Dashboard Pagalava.
-
-Após gravar o número de conta, é gerada a Chave Antifishing, esta chave é aleatoria. A Chave Antifishing permite ao sistema IfThenPay identificar-se perante o PagaLava para confirmar com segurança de que o pagamento foi efectuado.
-
-
-De seguida iremos ativar a Callback. Introduza o texto em ambos os campos.
 ### Sistema de testes.
 
 URL de Callback: https://pagalava-services-dev.washstation.io/api/paycallback/mbway?key=[ANTI_PHISHING_KEY]&id=[ID]&amount=[AMOUNT]&payment_datetime=[PAYMENT_DATETIME]&payment_method=[PAYMENT_METHOD]
-
 
 ### Sistema produção.
 URL de Callback: https://pagalava-services.washstation.io/api/paycallback/mbway?key=[ANTI_PHISHING_KEY]&id=[ID]&amount=[AMOUNT]&payment_datetime=[PAYMENT_DATETIME]&payment_method=[PAYMENT_METHOD]
@@ -178,6 +167,23 @@ URL de Callback: https://pagalava-services.washstation.io/api/paycallback/mbway?
 Chave Anti-Fishing: Chave dada pela dashboard.
 
 Gravar.
+
+# Resolução de Problemas
+
+## Reinstalação do PagaLava
+
+### Opção 1 - Com backup da instalação atual
+Para mover o diretório para um diretório de backup:
+```bash
+mv pagalava-iot pagalava-iot_backup
+```
+
+### Opção 2 - Sem backup da instalação atual
+Para apagar completamente a instalação atual:
+```bash
+rm -rf pagalava-iot
+```
+Após a remoção da instalação do PagaLava, pode ser reinstalado de forma segura.
 
 
 ## Referências
