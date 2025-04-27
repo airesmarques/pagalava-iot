@@ -323,11 +323,15 @@ def check_iot_hub_connection_via_cloud(connection_string):
         
         if service_status != "active":
             warning(f"O serviço receive_messages não está ativo (estado: {service_status})")
-            warning("A conexão do IoT Hub não pode ser verificada sem o serviço em execução")
-            return False
+            warning("O teste de conectividade poderá falhar se o script não estiver em execução")
+            info("A continuar com o teste, caso o ReceiveMessages esteja a ser executado manualmente")
+            # Não retornamos False aqui para permitir teste em ambiente de desenvolvimento
+        else:
+            success("O serviço receive_messages está ativo")
     except Exception as e:
-        error(f"Erro ao verificar o estado do serviço: {str(e)}")
-        return False
+        warning(f"Erro ao verificar o estado do serviço: {str(e)}")
+        info("A continuar com o teste de conectividade mesmo assim...")
+        # Não retornamos False para permitir teste mesmo sem systemd
     
     # Extrair informações da string de conexão
     device_id_match = re.search(r'DeviceId=([^;]+)', connection_string)
@@ -346,7 +350,7 @@ def check_iot_hub_connection_via_cloud(connection_string):
     
     # Determinar o ambiente e URL da API
     env = "dev" if "IoTHub-dev" in hostname else "prod"
-    api_url = f"https://digipay2-dashboard-{env if env == 'dev' else ''}.azurewebsites.net/api/diagnostics/verify_device"
+    api_url = f"https://digipay2-dashboard-{env if env == 'dev' else ''}.azurewebsites.net/api/laundries/iot/verify_device"
     
     # Dados para enviar à API
     payload = {
