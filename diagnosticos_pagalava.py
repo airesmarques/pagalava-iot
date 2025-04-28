@@ -288,7 +288,7 @@ def check_config_json():
             
             # Mostrar resumo das máquinas configuradas
             machine_count = len(config)
-            success(f"O config.json é válido (versão do esquema 1.2)")
+            success(f"O config.json é válido (versão do esquema 1.2 e superior)")
             info(f"Máquinas configuradas: {machine_count}")
             
             # Exibir todas as configurações de máquinas
@@ -350,7 +350,7 @@ def check_iot_hub_connection_via_cloud(connection_string):
     
     # Determinar o ambiente e URL da API
     env = "dev" if "IoTHub-dev" in hostname else "prod"
-    api_url = f"https://digipay2-dashboard-{env if env == 'dev' else ''}.azurewebsites.net/api/laundries/iot/verify_device"
+    api_url = f"https://digipay2-dashboard{'-dev' if env == 'dev' else ''}.azurewebsites.net/api/laundries/iot/verify_device"
     
     # Dados para enviar à API
     payload = {
