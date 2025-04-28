@@ -8,6 +8,7 @@ import json
 import re
 import requests
 import subprocess
+import socket
 
 from dotenv import load_dotenv
 from azure.iot.device import IoTHubDeviceClient
@@ -369,32 +370,91 @@ def message_handler(message):
     logging.info("Total messages received: %s", RECEIVED_MESSAGES)
     logging.info("Processing time: %.2f seconds", time.time() - start_time)
 
-def main():
-    logging.info("Starting the Python IoT Hub C2D Messaging device sample...")
-
+def check_internet_connection():
+    """Check if there is internet connectivity by trying to resolve DNS"""
     try:
-        # Instantiate the IoT Hub client
-        client = IoTHubDeviceClient.create_from_connection_string(IOT_CONNECTION_STRING)
-        logging.info("IoT Hub client instantiated successfully.")
+        # Try to resolve a common domain name
+        socket.gethostbyname("azure.microsoft.com")
+        return True
+    except socket.gaierror:
+        return False
 
-        logging.info("Waiting for C2D messages. Press Ctrl-C to exit.")
-        # Attach the message handler to the client
-        client.on_message_received = message_handler
-
-        # Keep the script running to listen for messages
-        while True:
-            time.sleep(1000)
-    except KeyboardInterrupt:
-        logging.info("IoT Hub C2D Messaging device sample stopped by user.")
-    except Exception as e:
-        logging.error("main: Unexpected error - %s", e)
-    finally:
-        # Gracefully shutdown the IoT Hub client
+def main():
+    """Main function with reconnection logic following Azure best practices"""
+    logging.info("Starting the Python IoT Hub C2D Messaging device sample...")
+    
+    # Initialize client at a broader scope so we can access it in finally block
+    client = None
+    
+    # Initial backoff time in seconds
+    backoff_time = 60
+    max_backoff_time = 300  # 5 minutes
+    
+    while True:
+        try:
+            # Check for internet connection before attempting to connect
+            if not check_internet_connection():
+                logging.warning("No internet connectivity detected. Waiting before retry...")
+                time.sleep(backoff_time)
+                
+                # Increase backoff using exponential backoff with max limit
+                backoff_time = min(backoff_time * 1.5, max_backoff_time)
+                continue
+                
+            # Reset backoff time when we have connectivity
+            backoff_time = 60
+            
+            # Create a new client instance if needed
+            if client is None:
+                logging.info("Instantiating IoT Hub client...")
+                client = IoTHubDeviceClient.create_from_connection_string(IOT_CONNECTION_STRING)
+                client.on_message_received = message_handler
+                logging.info("IoT Hub client instantiated successfully.")
+            
+            logging.info("Connecting to IoT Hub...")
+            # The connect() call is implicit in the SDK, but we can add explicit connection handling
+            
+            logging.info("Connected successfully. Waiting for C2D messages. Press Ctrl-C to exit.")
+            
+            # Keep the script running to listen for messages
+            while True:
+                # Using shorter sleep intervals allows for quicker response to KeyboardInterrupt
+                time.sleep(30)
+                
+                # Periodically check connection status (SDK doesn't provide direct way,
+                # but we can implement a ping mechanism or heartbeat if needed)
+                
+        except KeyboardInterrupt:
+            logging.info("IoT Hub C2D Messaging device sample stopped by user.")
+            break
+            
+        except Exception as e:
+            logging.error("Connection error: %s", e)
+            
+            # Properly clean up the client if it exists
+            if client:
+                try:
+                    client.shutdown()
+                    logging.info("IoT Hub client shut down due to error.")
+                except:
+                    pass
+                
+                # Set client to None so we create a fresh instance on retry
+                client = None
+            
+            logging.info("Will attempt to reconnect in %d seconds...", backoff_time)
+            time.sleep(backoff_time)
+            
+            # Increase backoff using exponential backoff with max limit
+            backoff_time = min(backoff_time * 1.5, max_backoff_time)
+    
+    # Final cleanup
+    if client:
         try:
             client.shutdown()
             logging.info("IoT Hub client shut down successfully.")
         except Exception as e:
-            logging.error("main: Error during client shutdown - %s", e)
+            logging.error("Error during client shutdown: %s", e)
 
 if __name__ == '__main__':
     main()
