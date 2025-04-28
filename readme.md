@@ -5,7 +5,7 @@ Este guia fornece instruções passo a passo para a instalação e configuraçã
 
 ## Pre-requisitos
 
-1. Raspberry 3, 4, ou ZeroW com HAT Ethernet.
+1. Raspberry 3, 4, 5.
 2. Cartão SD com pelo menos 4GB.
 3. Cabo para ligação Ethernet ao Raspberry.
 4. 1 ou 2 módulos de relés de 8 canais DC 5V
@@ -45,6 +45,7 @@ Password: À sua escolha, uma password segura.
 
 Para sistemas em loja, apenas a ligação por Ethernet é suportada.
 Pode usar WiFi para a configuração apenas por comodidade.
+Para instruções detalhadas sobre configuração WiFi, consulte o [Guia de Configuração WiFi](./instructions/configuracao_wifi.md).
 Seleccione o país e teclado.
 
 ![Configuração geral](/instructions/Rpi-Imager-General.png)
@@ -185,6 +186,17 @@ rm -rf pagalava-iot
 ```
 Após a remoção da instalação do PagaLava, pode ser reinstalado de forma segura.
 
+
+## Histórico de Versões
+
+| Versão | Data       | Melhorias                                                                                           |
+|--------|------------|-----------------------------------------------------------------------------------------------------|
+| 1.0    |            | Primeira versão do dispositivo IoT com funcionalidades básicas                                      |
+| 1.1    |            | Adicionado controlo de tempo dos relés                                                              |
+| 1.2    |            | Adicionado intervalo entre impulsos e número de impulsos para ativação                              |
+|        |            | Implementado sistema de relatório de versão e suporte para atualização remota                       |
+| 1.3    | 28/04/2025 | Adicionado suporte para mensagens de diagnóstico com ferramentas de verificação de conectividade    |
+|        |            | Implementada recuperação de conexão e melhoria da lógica de tentativas após falhas de rede          |
 
 ## Referências
 
