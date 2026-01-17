@@ -179,7 +179,7 @@ fi
 
 # Install required Python packages
 echo "Installing required Python packages..."
-pip install -r requirements.txt
+pip install -q -r requirements.txt 2>&1 | grep -v "types-tensorflow"
 deactivate
 
 # Make the main script executable

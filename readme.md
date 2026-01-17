@@ -5,7 +5,7 @@ Este guia fornece instruções passo a passo para a instalação e configuraçã
 **Versões suportadas:**
 - Raspberry Pi OS Bullseye (Debian 11) - `setup_pagalava_iot_debian11.sh`
 - Raspberry Pi OS Bookworm (Debian 12) - `setup_pagalava_iot.sh`
-- Raspberry Pi OS Trixie (Debian 13) - `setup_pagalava_iot_debian13.sh` *(experimental)*
+- Raspberry Pi OS Trixie (Debian 13) - `setup_pagalava_iot_debian13.sh`
 
 
 ## Pre-requisitos
@@ -115,7 +115,7 @@ chmod +x setup_pagalava_iot.sh
 rm setup_pagalava_iot.sh
 ```
 
-### Debian 13 (Trixie) - Experimental
+### Debian 13 (Trixie)
 Para instalar em Raspberry Pi OS Trixie, execute:
 
 ```bash
