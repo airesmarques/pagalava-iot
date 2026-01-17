@@ -11,23 +11,12 @@ SERVICENAME="receive_messages.service"
 
 # Detect Debian version
 DEBIAN_VERSION=$(cat /etc/os-release | grep VERSION_ID | cut -d'"' -f2)
-DEBIAN_CODENAME=$(cat /etc/os-release | grep VERSION_CODENAME | cut -d'=' -f2)
-echo "Detected Debian version: ${DEBIAN_VERSION} (${DEBIAN_CODENAME})"
+echo "Detected Debian version: ${DEBIAN_VERSION}"
 
 if [ "$DEBIAN_VERSION" -lt 12 ]; then
     echo "This script is intended for Debian 12 (Bookworm) or later."
-    echo "For Debian 11 (Bullseye), use setup_pagalava_iot.sh instead."
+    echo "For Debian 11 (Bullseye), use setup_pagalava_iot_debian11.sh instead."
     exit 1
-fi
-
-# Set repo codename (use bookworm for both 12 and 13 if trixie repo not available)
-REPO_CODENAME="bookworm"
-if [ "$DEBIAN_VERSION" -ge 13 ]; then
-    echo ""
-    echo "*** DEBIAN 13 (TRIXIE) DETECTED ***"
-    echo "Note: Python 3.13 requires system site packages for GPIO libraries."
-    echo ""
-    REPO_CODENAME="trixie"
 fi
 
 # Update and upgrade Raspberry Pi OS
@@ -38,13 +27,13 @@ sudo apt-get update && sudo apt-get upgrade -y
 echo "Checking Raspberry Pi repository..."
 if ! grep -q "archive.raspberrypi.org" /etc/apt/sources.list.d/*.list 2>/dev/null; then
     echo "Adding Raspberry Pi repository..."
-    echo "deb http://archive.raspberrypi.org/debian/ ${REPO_CODENAME} main" | sudo tee /etc/apt/sources.list.d/raspi.list
+    echo "deb http://archive.raspberrypi.org/debian/ bookworm main" | sudo tee /etc/apt/sources.list.d/raspi.list
 
     # Add the repository key
     if [ ! -f /usr/share/keyrings/raspberrypi-archive-keyring.gpg ]; then
         wget -qO - https://archive.raspberrypi.org/debian/raspberrypi.gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/raspberrypi-archive-keyring.gpg
         # Update the sources list to use signed-by
-        echo "deb [signed-by=/usr/share/keyrings/raspberrypi-archive-keyring.gpg] http://archive.raspberrypi.org/debian/ ${REPO_CODENAME} main" | sudo tee /etc/apt/sources.list.d/raspi.list
+        echo "deb [signed-by=/usr/share/keyrings/raspberrypi-archive-keyring.gpg] http://archive.raspberrypi.org/debian/ bookworm main" | sudo tee /etc/apt/sources.list.d/raspi.list
     fi
 
     sudo apt-get update
@@ -140,14 +129,7 @@ chmod 600 "${WORKINGDIR}/.env"  # Restrict permissions for security
 
 # Create a virtual environment and activate it
 echo "Setting up the virtual environment..."
-if [ "$DEBIAN_VERSION" -ge 13 ]; then
-    # Debian 13+ requires system-site-packages to access GPIO libraries
-    # because lgpio/RPi.GPIO pip wheels don't exist for Python 3.13
-    echo "Using --system-site-packages for Python 3.13 GPIO compatibility..."
-    python3 -m venv --system-site-packages "${VENVDIR}"
-else
-    python3 -m venv "${VENVDIR}"
-fi
+python3 -m venv "${VENVDIR}"
 . "${VENVDIR}/bin/activate"
 
 # Install required Python packages

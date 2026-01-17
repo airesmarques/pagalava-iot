@@ -11,12 +11,23 @@ SERVICENAME="receive_messages.service"
 
 # Detect Debian version
 DEBIAN_VERSION=$(cat /etc/os-release | grep VERSION_ID | cut -d'"' -f2)
-echo "Detected Debian version: ${DEBIAN_VERSION}"
+DEBIAN_CODENAME=$(cat /etc/os-release | grep VERSION_CODENAME | cut -d'=' -f2)
+echo "Detected Debian version: ${DEBIAN_VERSION} (${DEBIAN_CODENAME})"
 
 if [ "$DEBIAN_VERSION" -lt 12 ]; then
     echo "This script is intended for Debian 12 (Bookworm) or later."
-    echo "For Debian 11 (Bullseye), use setup_pagalava_iot.sh instead."
+    echo "For Debian 11 (Bullseye), use setup_pagalava_iot_debian11.sh instead."
     exit 1
+fi
+
+# Set repo codename (use bookworm for both 12 and 13 if trixie repo not available)
+REPO_CODENAME="bookworm"
+if [ "$DEBIAN_VERSION" -ge 13 ]; then
+    echo ""
+    echo "*** DEBIAN 13 (TRIXIE) DETECTED ***"
+    echo "Note: Python 3.13 requires system site packages for GPIO libraries."
+    echo ""
+    REPO_CODENAME="trixie"
 fi
 
 # Update and upgrade Raspberry Pi OS
@@ -27,32 +38,51 @@ sudo apt-get update && sudo apt-get upgrade -y
 echo "Checking Raspberry Pi repository..."
 if ! grep -q "archive.raspberrypi.org" /etc/apt/sources.list.d/*.list 2>/dev/null; then
     echo "Adding Raspberry Pi repository..."
-    echo "deb http://archive.raspberrypi.org/debian/ bookworm main" | sudo tee /etc/apt/sources.list.d/raspi.list
+    echo "deb http://archive.raspberrypi.org/debian/ ${REPO_CODENAME} main" | sudo tee /etc/apt/sources.list.d/raspi.list
 
     # Add the repository key
     if [ ! -f /usr/share/keyrings/raspberrypi-archive-keyring.gpg ]; then
         wget -qO - https://archive.raspberrypi.org/debian/raspberrypi.gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/raspberrypi-archive-keyring.gpg
         # Update the sources list to use signed-by
-        echo "deb [signed-by=/usr/share/keyrings/raspberrypi-archive-keyring.gpg] http://archive.raspberrypi.org/debian/ bookworm main" | sudo tee /etc/apt/sources.list.d/raspi.list
+        echo "deb [signed-by=/usr/share/keyrings/raspberrypi-archive-keyring.gpg] http://archive.raspberrypi.org/debian/ ${REPO_CODENAME} main" | sudo tee /etc/apt/sources.list.d/raspi.list
     fi
 
     sudo apt-get update
 fi
 
-# Install Git, Python3, PIP, and GPIO libraries (Debian 12 specific packages)
-echo "Installing Git, Python3, PIP, GPIO libraries, Python Virtual environments..."
-sudo apt-get install -y \
-    git \
-    python3 \
-    python3-pip \
-    python3-venv \
-    python3-rpi.gpio \
-    rpi.gpio-common \
-    python3-lgpio \
-    python3-gpiozero \
-    raspberrypi-sys-mods \
-    raspi-gpio \
-    raspi-config
+# Install essential packages first (these must succeed)
+echo "Installing essential packages (git, python3, pip, venv)..."
+sudo apt-get install -y git python3 python3-pip python3-venv
+if [ $? -ne 0 ]; then
+    echo "ERROR: Failed to install essential packages. Aborting."
+    exit 1
+fi
+
+# Install GPIO libraries and Raspberry Pi packages
+# Some packages may not exist on all Debian versions, so install them separately
+echo "Installing GPIO libraries and Raspberry Pi packages..."
+
+# Core GPIO packages (should exist on both Bookworm and Trixie)
+CORE_PACKAGES="python3-rpi.gpio rpi.gpio-common python3-lgpio python3-gpiozero raspberrypi-sys-mods raspi-config"
+for pkg in $CORE_PACKAGES; do
+    if apt-cache show "$pkg" > /dev/null 2>&1; then
+        echo "Installing $pkg..."
+        sudo apt-get install -y "$pkg" || echo "Warning: Failed to install $pkg (continuing...)"
+    else
+        echo "Package $pkg not available in repository (skipping)"
+    fi
+done
+
+# Optional packages (may not exist on Trixie)
+OPTIONAL_PACKAGES="raspi-gpio"
+for pkg in $OPTIONAL_PACKAGES; do
+    if apt-cache show "$pkg" > /dev/null 2>&1; then
+        echo "Installing optional package $pkg..."
+        sudo apt-get install -y "$pkg" || echo "Warning: Failed to install $pkg (continuing...)"
+    else
+        echo "Optional package $pkg not available (skipping - this is OK)"
+    fi
+done
 
 # Create gpio, spi, i2c groups if they don't exist
 echo "Ensuring required groups exist..."
@@ -118,10 +148,18 @@ if [ -d "pagalava-iot" ]; then
 else
     echo "Cloning the pagalava-iot repository..."
     git clone https://github.com/airesmarques/pagalava-iot
+    if [ $? -ne 0 ]; then
+        echo "ERROR: Failed to clone repository. Aborting."
+        exit 1
+    fi
 fi
 
 # Navigate into the cloned directory
 cd "${WORKINGDIR}"
+if [ ! -d "${WORKINGDIR}" ]; then
+    echo "ERROR: Working directory ${WORKINGDIR} does not exist. Aborting."
+    exit 1
+fi
 
 # Save the connection string to .env file for persistence (after directory exists)
 echo "IOT_CONNECTION_STRING=\"${IOT_CONNECTION_STRING}\"" > "${WORKINGDIR}/.env"
@@ -129,7 +167,14 @@ chmod 600 "${WORKINGDIR}/.env"  # Restrict permissions for security
 
 # Create a virtual environment and activate it
 echo "Setting up the virtual environment..."
-python3 -m venv "${VENVDIR}"
+if [ "$DEBIAN_VERSION" -ge 13 ]; then
+    # Debian 13+ requires system-site-packages to access GPIO libraries
+    # because lgpio/RPi.GPIO pip wheels don't exist for Python 3.13
+    echo "Using --system-site-packages for Python 3.13 GPIO compatibility..."
+    python3 -m venv --system-site-packages "${VENVDIR}"
+else
+    python3 -m venv "${VENVDIR}"
+fi
 . "${VENVDIR}/bin/activate"
 
 # Install required Python packages
