@@ -2,9 +2,9 @@
 
 # Configuration variables
 REPO_URL="https://github.com/airesmarques/pagalava-iot"
-USERNAME="pagalava"
-GROUPNAME="pagalava"
-WORKINGDIR="/home/${USERNAME}/pagalava-iot"
+USERNAME="${USER}"
+GROUPNAME="${USER}"
+WORKINGDIR="${HOME}/pagalava-iot"
 VENVDIR="${WORKINGDIR}/.venv"
 SCRIPTNAME="ReceiveMessages.py"
 SERVICENAME="receive_messages.service"

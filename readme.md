@@ -45,7 +45,7 @@ Com o Raspberry Pi Imager instalado, pode gravar a imagem do sistema operativo n
 
 ### 1.3: Configuração geral 
 
-Nome de utizador: pagalava.
+Nome de utilizador: pagalava (recomendado).
 Password: À sua escolha, uma password segura.
 
 Para sistemas em loja, apenas a ligação por Ethernet é suportada.
