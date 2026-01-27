@@ -1,6 +1,6 @@
 # Instruções de Instalação
 
-Este guia fornece instruções passo a passo para a instalação e configuração do Raspberry Pi OS no seu Raspberry Pi.
+Este guia fornece instruções passo a passo para a instalação e configuração do sistema de Pagamentos PagaLava usando um  Raspberry Pi.
 
 **Versões suportadas:**
 - Raspberry Pi OS Bullseye (Debian 11) - `setup_pagalava_iot_debian11.sh`
@@ -10,8 +10,8 @@ Este guia fornece instruções passo a passo para a instalação e configuraçã
 
 ## Pre-requisitos
 
-1. Raspberry 3, 4, 5.
-2. Cartão SD com pelo menos 4GB.
+1. Raspberry 4, 5.
+2. Cartão SD com pelo menos 16 GB.
 3. Cabo para ligação Ethernet ao Raspberry.
 4. 1 ou 2 módulos de relés de 8 canais DC 5V
 5. Cabos jumper fêmea-fêmea para ligar o Raspberry ao(s) módulos de relés.
@@ -192,8 +192,10 @@ Após a execução, deve fazer um reboot ou reinicializar o servico "receive_mes
 
 ## Configuração das máquinas de lavar e secar
 
-Para já, entrar em contacto comigo :D
-No futuro irei criar uma dashboard de configuração.
+A configuração das máquinas é feita na dashboard PagaLava:
+
+- Sistema de testes: gerir-dev.pagalava.pt 
+- Sistema de produção: gerir.pagalava.pt 
 
 ## Configuração do IfThenPay
 
@@ -242,4 +244,3 @@ Após a remoção da instalação do PagaLava, pode ser reinstalado de forma seg
 ## Referências
 
 [Hardware Raspberry](https://www.raspberrypi.com/documentation/computers/raspberry-pi.html)
-
