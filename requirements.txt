@@ -1,6 +1,7 @@
 #flask
 #requests
-RPi.GPIO
+gpiozero
+lgpio
 spidev
 azure-iot-device
 python-dotenv

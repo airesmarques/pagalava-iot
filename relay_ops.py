@@ -1,10 +1,22 @@
 """
 Filename: relay_ops.py
+
+Supports both older Raspberry Pi models and Raspberry Pi 5.
+Uses gpiozero with lgpio backend for Pi 5 compatibility.
 """
 
-import RPi.GPIO as GPIO
+from gpiozero import OutputDevice
+from gpiozero.pins.lgpio import LGPIOFactory
 import time
 import json
+
+# Use lgpio as the pin factory for Pi 5 compatibility
+try:
+    from gpiozero import Device
+    Device.pin_factory = LGPIOFactory()
+except Exception as e:
+    print(f"Warning: Could not set lgpio pin factory: {e}")
+    print("Falling back to default pin factory")
 
 # Custom Exception
 class MachineNotConfiguredException(Exception):
@@ -18,6 +30,7 @@ class MachineNotConfiguredException(Exception):
 ACTIVATION_TIME_INTERVAL: int = 2
 ACTIVATION_TIME_DURATION: int = 2
 
+# GPIO pin mapping (BCM numbering)
 relay_to_gpio_map = {
     # Module 1 - WASH
     1: 22,  # WASH
@@ -37,10 +50,19 @@ relay_to_gpio_map = {
     16: 26
 }
 
-used_gpio = list(relay_to_gpio_map.values())
+# Create OutputDevice objects for each GPIO pin
+# active_high=False means the relay is active when the output is LOW
+# initial_value=False means start with relay OFF (GPIO HIGH for active-low relays)
+gpio_devices = {}
+for relay_num, gpio_pin in relay_to_gpio_map.items():
+    # For active-low relays: active_high=False, initial_value=False means GPIO starts HIGH (relay OFF)
+    gpio_devices[relay_num] = OutputDevice(gpio_pin, active_high=False, initial_value=False)
 
-GPIO.setmode(GPIO.BCM)  # Use BCM GPIO numbering
-GPIO.setup(used_gpio, GPIO.OUT, initial=GPIO.HIGH)
+# Constants for GPIO states (for compatibility with existing code)
+class GPIO:
+    """Compatibility class to maintain existing code interface"""
+    LOW = True   # Active (relay ON)
+    HIGH = False # Inactive (relay OFF)
 
 # Load the relay mapping once at the start of the program
 relay_mapping_data = {}
@@ -203,10 +225,14 @@ def control_relay(
     state):
     gpio = relay_to_gpio_map[relay_number]
     
-    log_str = f"Relay number: {relay_number} - GPIO: {gpio} - State: {state}"
+    log_str = f"Relay number: {relay_number} - GPIO: {gpio} - State: {'ON' if state else 'OFF'}"
     print(log_str)
     
-    GPIO.output(gpio, state)
+    device = gpio_devices[relay_number]
+    if state:  # GPIO.LOW equivalent - activate relay
+        device.on()
+    else:      # GPIO.HIGH equivalent - deactivate relay
+        device.off()
 
     # GPIO.cleanup()
 
