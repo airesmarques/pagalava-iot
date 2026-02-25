@@ -1,12 +1,17 @@
 # Instruções de Instalação
 
-Este guia fornece instruções passo a passo para a instalação e configuração do Raspberry Pi OS Bullseye 64-bit Lite no seu Raspberry Pi.
+Este guia fornece instruções passo a passo para a instalação e configuração do sistema de Pagamentos PagaLava usando um  Raspberry Pi.
+
+**Versões suportadas:**
+- Raspberry Pi OS Bullseye (Debian 11) - `setup_pagalava_iot_debian11.sh`
+- Raspberry Pi OS Bookworm (Debian 12) - `setup_pagalava_iot.sh`
+- Raspberry Pi OS Trixie (Debian 13) - `setup_pagalava_iot_debian13.sh`
 
 
 ## Pre-requisitos
 
-1. Raspberry 3, 4, 5.
-2. Cartão SD com pelo menos 4GB.
+1. Raspberry 4, 5.
+2. Cartão SD com pelo menos 16 GB.
 3. Cabo para ligação Ethernet ao Raspberry.
 4. 1 ou 2 módulos de relés de 8 canais DC 5V
 5. Cabos jumper fêmea-fêmea para ligar o Raspberry ao(s) módulos de relés.
@@ -32,15 +37,15 @@ Com o Raspberry Pi Imager instalado, pode gravar a imagem do sistema operativo n
 2. Abra o Raspberry Pi Imager.
 3. Em Raspberry Pi Device, escolha o modelo Raspberry Pi 4, ou Pi Zero, dependendo do que está a utilizar.
 3. Selecione a opção "Escolher SO" (Choose OS).
-4. Vá até a secção "Raspberry Pi OS (Outras)" (Raspberry Pi OS (Other)) e selecione "Raspberry Pi OS (Legacy, 64-bit) Lite".
+4. Selecione a versão do sistema operativo:
+   - **Recomendado:** "Raspberry Pi OS (64-bit) Lite" - baseado em Debian Bookworm/Trixie
+   - **Legacy:** "Raspberry Pi OS (Legacy, 64-bit) Lite" - baseado em Debian Bullseye
 5. Selecione a opção "Escolher Cartão" (Choose Storage) e selecione o cartão SD que você inseriu.
 6. Clique em "Escrever" (Write) para começar a escrever a imagem no cartão SD.
 
-![Exemplo de versão Debian Bullseye](/instructions/Debian_Bullseye_version.png)
-
 ### 1.3: Configuração geral 
 
-Nome de utizador: pagalava.
+Nome de utilizador: pagalava (recomendado).
 Password: À sua escolha, uma password segura.
 
 Para sistemas em loja, apenas a ligação por Ethernet é suportada.
@@ -96,13 +101,35 @@ Por exemplo, o relés com indice 9, que é o primeiro do segundo módulo de rel�
 
 
 ## Configuração do sistema PagaLava
-Localize o Raspberry na sua rede, identificando o endereço IP, e ligue-se ao Raspberry por SSH. 
+Localize o Raspberry na sua rede, identificando o endereço IP, e ligue-se ao Raspberry por SSH.
 
 Não é necessário atualizar o sistema operativo, os updates serão executados no script de instalação.
-Para instalar todos os components do sistema Pagalava, execute o script abaixo:
+
+### Debian 12 (Bookworm) - Recomendado
+Para instalar em Raspberry Pi OS Bookworm, execute:
 
 ```bash
 curl -sSL -o setup_pagalava_iot.sh https://raw.githubusercontent.com/airesmarques/pagalava-iot/main/setup_pagalava_iot.sh
+chmod +x setup_pagalava_iot.sh
+. ./setup_pagalava_iot.sh
+rm setup_pagalava_iot.sh
+```
+
+### Debian 13 (Trixie)
+Para instalar em Raspberry Pi OS Trixie, execute:
+
+```bash
+curl -sSL -o setup_pagalava_iot.sh https://raw.githubusercontent.com/airesmarques/pagalava-iot/main/setup_pagalava_iot_debian13.sh
+chmod +x setup_pagalava_iot.sh
+. ./setup_pagalava_iot.sh
+rm setup_pagalava_iot.sh
+```
+
+### Debian 11 (Bullseye) - Legacy
+Para instalações em Raspberry Pi OS Bullseye (legacy), execute:
+
+```bash
+curl -sSL -o setup_pagalava_iot.sh https://raw.githubusercontent.com/airesmarques/pagalava-iot/main/setup_pagalava_iot_debian11.sh
 chmod +x setup_pagalava_iot.sh
 . ./setup_pagalava_iot.sh
 rm setup_pagalava_iot.sh
@@ -119,7 +146,23 @@ executar o script:
 
 Escolher m1, m2, ou m3. Após esta escolha, sequencialmente cada um dos módulos de relés serão ligados durante uma fração do tempo de uma ativação convencional. Isto permite verificar se o módulo de relés está montado corretamente.
 
-## Ligação à Cloud Pagalava
+### Executar diagnósticos do dispositivo
+Para verificar o estado geral do dispositivo IoT, incluindo conectividade de rede, estado do serviço, e configuração GPIO, execute o script de diagnósticos:
+
+```bash
+./diagnosticos.sh
+```
+
+O script irá:
+- Verificar se o ambiente virtual está configurado corretamente
+- Testar a conectividade de rede
+- Verificar o estado do serviço receive_messages
+- Testar a conectividade com a Cloud Pagalava
+- Validar a configuração do dispositivo
+
+O resultado do diagnóstico será apresentado no terminal com indicadores coloridos (verde = OK, amarelo = aviso, vermelho = erro).
+
+## Ligação manual à Cloud Pagalava
 A ligação do Raspberry à Cloud Pagalava é feita durante a instalação, desde que a IOT_CONNECTION_STRING esteja correta.
 
 para verificar a ligação:
@@ -149,8 +192,10 @@ Após a execução, deve fazer um reboot ou reinicializar o servico "receive_mes
 
 ## Configuração das máquinas de lavar e secar
 
-Para já, entrar em contacto comigo :D
-No futuro irei criar uma dashboard de configuração.
+A configuração das máquinas é feita na dashboard PagaLava:
+
+- Sistema de testes: gerir-dev.pagalava.pt 
+- Sistema de produção: gerir.pagalava.pt 
 
 ## Configuração do IfThenPay
 
@@ -160,14 +205,11 @@ Para fazer a configuração do IfThenPay, basta seguir as instruções na dashbo
 
 ### Sistema de testes.
 
-URL de Callback: https://pagalava-services-dev.washstation.io/api/paycallback/mbway?key=[ANTI_PHISHING_KEY]&id=[ID]&amount=[AMOUNT]&payment_datetime=[PAYMENT_DATETIME]&payment_method=[PAYMENT_METHOD]
+gerir-dev.pagalava.pt
 
 ### Sistema produção.
-URL de Callback: https://pagalava-services.washstation.io/api/paycallback/mbway?key=[ANTI_PHISHING_KEY]&id=[ID]&amount=[AMOUNT]&payment_datetime=[PAYMENT_DATETIME]&payment_method=[PAYMENT_METHOD]
 
-Chave Anti-Fishing: Chave dada pela dashboard.
-
-Gravar.
+gerir.pagalava.pt
 
 # Resolução de Problemas
 
@@ -197,6 +239,7 @@ Após a remoção da instalação do PagaLava, pode ser reinstalado de forma seg
 |        |            | Implementado sistema de relatório de versão e suporte para atualização remota                       |
 | 1.3    | 28/04/2025 | Adicionado suporte para mensagens de diagnóstico com ferramentas de verificação de conectividade    |
 |        |            | Implementada recuperação de conexão e melhoria da lógica de tentativas após falhas de rede          |
+| 1.3    | 16/01/2026 | Compatibilidade com Debian 12/13                                                                    |
 | 1.4    | 25/02/2026 | Verificação de conectividade remota: ao receber mensagem de diagnóstico, o dispositivo envia        |
 |        |            | callback HTTP para a cloud com o endereço IP local e código de verificação, permitindo confirmar    |
 |        |            | a conectividade e IP do dispositivo diretamente a partir da dashboard PagaLava                      |
@@ -204,4 +247,3 @@ Após a remoção da instalação do PagaLava, pode ser reinstalado de forma seg
 ## Referências
 
 [Hardware Raspberry](https://www.raspberrypi.com/documentation/computers/raspberry-pi.html)
-
