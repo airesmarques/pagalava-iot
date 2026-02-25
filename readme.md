@@ -197,6 +197,9 @@ Após a remoção da instalação do PagaLava, pode ser reinstalado de forma seg
 |        |            | Implementado sistema de relatório de versão e suporte para atualização remota                       |
 | 1.3    | 28/04/2025 | Adicionado suporte para mensagens de diagnóstico com ferramentas de verificação de conectividade    |
 |        |            | Implementada recuperação de conexão e melhoria da lógica de tentativas após falhas de rede          |
+| 1.4    | 25/02/2026 | Verificação de conectividade remota: ao receber mensagem de diagnóstico, o dispositivo envia        |
+|        |            | callback HTTP para a cloud com o endereço IP local e código de verificação, permitindo confirmar    |
+|        |            | a conectividade e IP do dispositivo diretamente a partir da dashboard PagaLava                      |
 
 ## Referências
 
