@@ -278,37 +278,24 @@ def message_version(json_data: dict):
         logging.error("%s: Error sending version info: %s", func_name, e)
         return False
 
-def get_local_ip():
-    """Get the device's local IP address."""
-    try:
-        # Connect to an external address to determine the local IP used for routing
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.connect(("8.8.8.8", 80))
-            return s.getsockname()[0]
-    except Exception as e:
-        logging.warning("Could not determine local IP address: %s", e)
-        return None
-
-
 def message_diagnostic(json_data: dict):
     """
-    Manipula mensagens de diagnóstico, gravando o código de verificação num ficheiro
-    e enviando o callback de conectividade para o backend.
-
+    Manipula mensagens de diagnóstico, gravando o código de verificação num ficheiro.
+    
     :param json_data: O JSON da mensagem contendo o código de verificação
     """
     func_name = "message_diagnostic"
     logging.info("%s: Mensagem de diagnóstico recebida", func_name)
-
+    
     verification_code = json_data.get("verification_code")
     if not verification_code:
         logging.error("%s: Código de verificação não encontrado na mensagem", func_name)
         return False
-
+    
     # Pasta para ficheiros temporários
     script_dir = os.path.dirname(os.path.abspath(__file__))
     diagnostic_dir = os.path.join(script_dir, "diagnostics")
-
+    
     # Criar pasta se não existir
     if not os.path.exists(diagnostic_dir):
         try:
@@ -317,42 +304,20 @@ def message_diagnostic(json_data: dict):
         except Exception as e:
             logging.error("%s: Falha ao criar pasta de diagnóstico - %s", func_name, e)
             return False
-
+    
     # Gravar o código num ficheiro
     verification_file = os.path.join(diagnostic_dir, "verification_code.txt")
     try:
         with open(verification_file, 'w') as file:
             file.write(verification_code)
-        os.chmod(verification_file, 0o666)
+        
+        # Configurar permissões para que diagnóstico possa ler e apagar
+        os.chmod(verification_file, 0o666)  
+        
         logging.info("%s: Código de verificação gravado em %s", func_name, verification_file)
+        return True
     except Exception as e:
         logging.error("%s: Falha ao gravar código de verificação - %s", func_name, e)
-        return False
-
-    # Enviar callback de conectividade para o backend
-    ip_address = get_local_ip()
-    env_info = determine_environment()
-    url = f"https://{env_info['url']}/api/laundries/iot/connectivity_callback"
-
-    payload = {
-        "device_id": DEVICE_ID,
-        "verification_code": verification_code,
-        "ip_address": ip_address
-    }
-
-    logging.info("%s: Enviando callback de conectividade para %s (IP: %s)", func_name, url, ip_address)
-
-    try:
-        response = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=15)
-        if response.status_code == 200:
-            logging.info("%s: Callback de conectividade enviado com sucesso", func_name)
-            return True
-        else:
-            logging.error("%s: Falha no callback. Status: %s, Resposta: %s",
-                         func_name, response.status_code, response.text)
-            return False
-    except requests.exceptions.RequestException as e:
-        logging.error("%s: Erro ao enviar callback de conectividade: %s", func_name, e)
         return False
 
 def message_handler(message):
