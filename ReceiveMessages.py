@@ -201,7 +201,7 @@ def message_upgrade():
         
         # Schedule restart using absolute paths
         subprocess.Popen(
-            ["sudo", "systemctl", "restart", "receive_messages.service"],
+            ["/usr/bin/sudo", "/usr/bin/systemctl", "restart", "receive_messages.service"],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
         )
