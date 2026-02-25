@@ -155,12 +155,25 @@ def message_activate(json_data: dict):
 def message_reboot():
     func_name = "message_reboot"
     logging.info("%s: Reboot command received.", func_name)
+    # Try common reboot paths for compatibility across Debian versions
+    reboot_candidates = ["/sbin/reboot", "/usr/sbin/reboot", "/bin/reboot"]
+    reboot_path = None
+    for candidate in reboot_candidates:
+        if os.path.exists(candidate):
+            reboot_path = candidate
+            break
+
+    if reboot_path is None:
+        logging.error("%s: Could not find reboot executable.", func_name)
+        return
+
     try:
         subprocess.Popen(
-            ["/usr/bin/sudo", "/sbin/reboot"],
+            ["/usr/bin/sudo", reboot_path],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
         )
+        logging.info("%s: Reboot command issued via %s", func_name, reboot_path)
     except Exception as e:
         logging.error("%s: Failed to reboot - %s", func_name, e)
 
