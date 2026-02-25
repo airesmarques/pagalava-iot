@@ -155,7 +155,14 @@ def message_activate(json_data: dict):
 def message_reboot():
     func_name = "message_reboot"
     logging.info("%s: Reboot command received.", func_name)
-    # Implement reboot logic here
+    try:
+        subprocess.Popen(
+            ["/usr/bin/sudo", "/sbin/reboot"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+    except Exception as e:
+        logging.error("%s: Failed to reboot - %s", func_name, e)
 
 def message_upgrade():
     """
