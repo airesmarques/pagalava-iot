@@ -103,18 +103,30 @@ def message_wake_up():
 
 def message_activate(json_data: dict):
     func_name = "message_activate"
+
+    intent_id = json_data.get('payment_intent_id') or json_data.get('intent_id')
+    machine_id_raw = json_data.get('machine_id')
+    number_of_impulses = json_data.get('number_of_impulses')
+    callback_url = json_data.get('callback_url')
+    callback_token = json_data.get('callback_token')
+    activation_key = json_data.get('activation_key')
+
+    activation_status = "CONFIRMED"
+    activation_error_code = None
+
     try:
-        intent_id = json_data.get('payment_intent_id') or json_data.get('intent_id')
-        machine_id = json_data['machine_id']
-        if isinstance(machine_id, str):
-            machine_id = int(machine_id)
-        number_of_impulses = json_data['number_of_impulses']
-        
+        if machine_id_raw is None:
+            raise KeyError('machine_id')
+        if number_of_impulses is None:
+            raise KeyError('number_of_impulses')
+
+        machine_id = int(machine_id_raw) if isinstance(machine_id_raw, str) else machine_id_raw
+
         logging.info(
             "%s: Activating intent_id=%s machine_id=%s, impulses=%s",
             func_name, intent_id, machine_id, number_of_impulses
         )
-        
+
         # Use version-appropriate activation function
         if VERSION.startswith("1.0"):
             logging.info("%s: Using v1.0 activation method", func_name)
@@ -140,17 +152,43 @@ def message_activate(json_data: dict):
                 machine_id=machine_id,
                 number_of_impulses=number_of_impulses
             )
-            
+
         logging.info("%s: Activation successful for machine_id=%s", func_name, machine_id)
-        
+
     except MachineNotConfiguredException as e:
         logging.error("%s: %s", func_name, e)
+        activation_status = "FAILED"
+        activation_error_code = "MACHINE_NOT_CONFIGURED"
     except KeyError as e:
         logging.error("%s: Missing key in JSON data - %s", func_name, e)
+        activation_status = "FAILED"
+        activation_error_code = "MISSING_KEY"
     except ValueError as e:
         logging.error("%s: Invalid data format - %s", func_name, e)
+        activation_status = "FAILED"
+        activation_error_code = "INVALID_DATA"
     except Exception as e:
         logging.error("%s: Unexpected error - %s", func_name, e)
+        activation_status = "FAILED"
+        activation_error_code = "RELAY_ERROR"
+
+    # Send execution confirmation if callback_url provided (v1.5+)
+    if callback_url and callback_token and activation_key:
+        try:
+            from datetime import datetime
+            payload = {
+                "activation_key": activation_key,
+                "callback_token": callback_token,
+                "device_id": DEVICE_ID,
+                "status": activation_status,
+                "executed_at": datetime.utcnow().isoformat() + "Z",
+            }
+            if activation_error_code:
+                payload["error_code"] = activation_error_code
+            requests.post(callback_url, json=payload, timeout=10)
+            logging.info("Activation callback sent to %s", callback_url)
+        except Exception as e:
+            logging.warning("Activation callback failed (non-critical): %s", e)
 
 def message_reboot():
     func_name = "message_reboot"
