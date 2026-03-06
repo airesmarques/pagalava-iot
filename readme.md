@@ -243,6 +243,12 @@ Após a remoção da instalação do PagaLava, pode ser reinstalado de forma seg
 | 1.4    | 25/02/2026 | Verificação de conectividade remota: ao receber mensagem de diagnóstico, o dispositivo envia        |
 |        |            | callback HTTP para a cloud com o endereço IP local e código de verificação, permitindo confirmar    |
 |        |            | a conectividade e IP do dispositivo diretamente a partir da dashboard PagaLava                      |
+| 1.5    | 03/03/2026 | Callback de execução de ativação: após ativar uma máquina, o dispositivo envia confirmação HTTP     |
+|        |            | para a cloud com o estado da ativação (CONFIRMED/FAILED), código de erro e timestamp, quando        |
+|        |            | os campos `callback_url`, `callback_token` e `activation_key` estiverem presentes no payload        |
+|        |            | Implementado comando de reboot remoto com suporte cross-Debian (testa `/sbin/reboot`,               |
+|        |            | `/usr/sbin/reboot`, `/bin/reboot`) e uso de caminho absoluto para `sudo`                            |
+|        |            | Corrigido caminho absoluto para `sudo` no reinício do serviço após atualização                      |
 
 ## Referências
 
