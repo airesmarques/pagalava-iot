@@ -4,3 +4,4 @@ RPi.GPIO
 spidev
 azure-iot-device
 python-dotenv
+textual==8.2.7
