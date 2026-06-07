@@ -643,7 +643,7 @@ if _TEXTUAL_AVAILABLE:
             with TabbedContent("Ambientes", "Relés"):
                 with TabPane("Ambientes", id="tab-ambientes"):
                     yield EnvTab()
-                with TabPane("Relés", id="tab-relés"):
+                with TabPane("Relés", id="tab-reles"):
                     yield RelayTab(self.monitor)
             yield Footer()
 
@@ -668,7 +668,7 @@ if _TEXTUAL_AVAILABLE:
                 env_tab = self.query_one(EnvTab)
                 env_tab._reload()
                 self.notify("Ambientes actualizados")
-            elif self.focused.id == "tab-relés":
+            elif self.focused.id == "tab-reles":
                 self.monitor.refresh_config()
                 relay_tab = self.query_one(RelayTab)
                 relay_tab._refresh_display()
