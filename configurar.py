@@ -31,6 +31,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -555,10 +556,20 @@ def main() -> None:
         return
 
     if not _TEXTUAL_AVAILABLE:
-        raise SystemExit(
-            "O textual não está instalado neste ambiente. "
-            "Instale com: .venv/bin/pip install -r requirements.txt"
-        )
+        logging.info("textual não encontrado; a instalar...")
+        try:
+            subprocess.run(
+                ["pip", "install", "textual==8.2.7"],
+                check=True,
+            )
+            logging.info("textual instalado com sucesso; a reiniciar...")
+            import sys
+            os.execvp(sys.executable, [sys.executable, __file__] + sys.argv[1:])
+        except subprocess.CalledProcessError:
+            raise SystemExit(
+                "Falha ao instalar textual. "
+                "Instale manualmente com: pip install textual==8.2.7"
+            )
 
     EnvManagerApp().run()
 
