@@ -63,6 +63,38 @@ _IGNORED_SUFFIXES = {"bak", "tmp", "sample", "example"}
 
 
 # ============================================================================
+# CONNECTION STATUS
+# ============================================================================
+
+def get_service_status() -> tuple[bool, str]:
+    """
+    Check if receive_messages.service is running.
+    Returns: (is_running: bool, status_text: str)
+    """
+    try:
+        result = subprocess.run(
+            ["systemctl", "is-active", SERVICE_NAME],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        is_active = result.returncode == 0
+        status = result.stdout.strip()
+        return is_active, status
+    except Exception as e:
+        logging.warning("Failed to check service status: %s", e)
+        return False, "unknown"
+
+
+def format_connection_indicator(is_connected: bool) -> str:
+    """Format connection status as a colored indicator."""
+    if is_connected:
+        return "[green]● Conectado[/green]"
+    else:
+        return "[red]● Desconectado[/red]"
+
+
+# ============================================================================
 # RELAY MONITORING
 # ============================================================================
 
@@ -481,6 +513,18 @@ if _TEXTUAL_AVAILABLE:
         def action_close(self) -> None:
             self.dismiss(None)
 
+    class StatusBar(Static):
+        """Barra de estado mostrando conexão."""
+
+        def render(self) -> str:
+            is_connected, status = get_service_status()
+            indicator = format_connection_indicator(is_connected)
+            return f"{indicator}"
+
+        def on_mount(self) -> None:
+            """Actualizar status a cada 2 segundos."""
+            self.set_interval(2.0, self.refresh)
+
     class EnvTab(Static):
         """Aba de gestão de ambientes (.env)."""
 
@@ -640,6 +684,7 @@ if _TEXTUAL_AVAILABLE:
 
         def compose(self) -> ComposeResult:
             yield Header()
+            yield StatusBar()
             with TabbedContent("Ambientes", "Relés"):
                 with TabPane("Ambientes", id="tab-ambientes"):
                     yield EnvTab()
