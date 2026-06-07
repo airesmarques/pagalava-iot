@@ -764,7 +764,7 @@ if _TEXTUAL_AVAILABLE:
         BINDINGS = [
             Binding("a,enter", "apply", "Aplicar", show=False),
             Binding("r", "refresh", "Actualizar", show=False),
-            Binding("n", "new", "Novo", show=False),
+            Binding("n", "new", "Novo"),
             Binding("q", "quit", "Sair"),
         ]
 
