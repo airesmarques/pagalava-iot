@@ -736,8 +736,9 @@ if _TEXTUAL_AVAILABLE:
             self._reload()
             self.push_screen(ResultScreen(result))
 
-    # Monkey-patch para adicionar o método _do_apply
+    # Monkey-patch para adicionar os métodos de apply
     EnvTab._do_apply = EnvTab_Extended._do_apply
+    EnvTab._apply_finished = EnvTab_Extended._apply_finished
     EnvTab.notify = lambda self, msg: self.app.notify(msg)
     EnvTab.push_screen = lambda self, screen: self.app.push_screen(screen)
 
