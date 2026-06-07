@@ -322,6 +322,62 @@ class ApplyResult:
     messages: List[str] = field(default_factory=list)
 
 
+
+def parse_connection_string(conn_str: str) -> dict:
+    """
+    Parse Azure IoT Hub connection string to extract device info.
+    Returns dict with: device_id, host, env_type (dev/prod)
+    """
+    try:
+        parts = {}
+        for part in conn_str.split(';'):
+            if '=' in part:
+                key, value = part.split('=', 1)
+                parts[key.strip()] = value.strip()
+        
+        device_id = parts.get('DeviceId', '')
+        host = parts.get('HostName', '')
+        
+        if not device_id or not host:
+            return None
+        
+        # Determine if dev or prod based on hostname
+        env_type = 'dev' if 'IoTHub-dev' in host else 'prod'
+        
+        return {
+            'device_id': device_id,
+            'host': host,
+            'env_type': env_type
+        }
+    except Exception:
+        return None
+
+
+def create_new_environment(conn_str: str) -> tuple[bool, str, str]:
+    """
+    Create a new .env file from a connection string.
+    Returns: (success: bool, message: str, env_name: str or None)
+    """
+    parsed = parse_connection_string(conn_str)
+    if not parsed:
+        return False, "Ligação inválida: não foi possível analisar a string", None
+    
+    # Generate environment name from device_id
+    env_name = parsed['device_id'].lower()
+    env_path = REPO_DIR / f".env.{env_name}"
+    
+    # Check if already exists
+    if env_path.exists():
+        return False, f"Ambiente .env.{env_name} já existe", None
+    
+    try:
+        env_path.write_text(f"IOT_CONNECTION_STRING={conn_str}\n", encoding='utf-8')
+        env_path.chmod(0o600)
+        return True, f"Novo ambiente criado: .env.{env_name}", env_name
+    except Exception as e:
+        return False, f"Erro ao criar ficheiro: {e}", None
+
+
 def _switch_symlink(env: EnvInfo, messages: List[str]) -> bool:
     """Reaponta .env -> .env.<nome> de forma atómica. Devolve True em sucesso."""
     previous = _active_target_name()
@@ -439,13 +495,46 @@ try:
     from textual.binding import Binding
     from textual.containers import Container, Horizontal, Vertical
     from textual.screen import ModalScreen
-    from textual.widgets import Button, DataTable, Footer, Header, Static, TabbedContent, TabPane
+    from textual.widgets import Button, DataTable, Footer, Header, Input, Static, TabbedContent, TabPane
     _TEXTUAL_AVAILABLE = True
 except ImportError:
     _TEXTUAL_AVAILABLE = False
 
 
 if _TEXTUAL_AVAILABLE:
+
+    class NewEnvironmentScreen(ModalScreen):
+        """Tela para criar um novo ambiente a partir de uma ligação."""
+
+        BINDINGS = [
+            Binding("escape", "cancel", "Cancelar"),
+        ]
+
+        def compose(self) -> ComposeResult:
+            with Container(id="new-env-box"):
+                yield Static("Criar novo ambiente", id="new-env-title")
+                yield Static(
+                    "Cole a string de ligação do IoT Hub:",
+                    id="new-env-label"
+                )
+                yield Input(
+                    placeholder="HostName=...;DeviceId=...;SharedAccessKey=...",
+                    id="conn-string-input"
+                )
+                with Horizontal(id="new-env-buttons"):
+                    yield Button("Criar (enter)", variant="primary", id="create")
+                    yield Button("Cancelar (esc)", variant="default", id="cancel")
+
+        def on_button_pressed(self, event: Button.Pressed) -> None:
+            if event.button.id == "create":
+                input_widget = self.query_one("#conn-string-input", Input)
+                conn_str = input_widget.value.strip()
+                self.dismiss(conn_str if conn_str else None)
+            else:
+                self.dismiss(None)
+
+        def action_cancel(self) -> None:
+            self.dismiss(None)
 
     class ConfirmScreen(ModalScreen):
         """Confirmação Sim/Não antes de trocar de ambiente."""
@@ -675,6 +764,7 @@ if _TEXTUAL_AVAILABLE:
         BINDINGS = [
             Binding("a,enter", "apply", "Aplicar", show=False),
             Binding("r", "refresh", "Actualizar", show=False),
+            Binding("n", "new", "Novo", show=False),
             Binding("q", "quit", "Sair"),
         ]
 
@@ -721,6 +811,29 @@ if _TEXTUAL_AVAILABLE:
                 relay_tab = self.query_one(RelayTab)
                 relay_tab._refresh_display()
                 self.notify("Relés actualizados")
+
+        def action_new(self) -> None:
+            """Criar novo ambiente a partir de uma ligação."""
+            tabbed = self.query_one(TabbedContent)
+            if tabbed.active != "tab-ambientes":
+                self.notify("Use a aba Ambientes para criar novo ambiente")
+                return
+            
+            def _after_input(conn_str: str) -> None:
+                if conn_str:
+                    success, msg, env_name = create_new_environment(conn_str)
+                    if success:
+                        self.notify(msg)
+                        env_tab = self.query_one(EnvTab)
+                        env_tab._reload()
+                    else:
+                        self.app.push_screen(
+                            ResultScreen(
+                                ApplyResult(False, "Erro", "", [msg])
+                            )
+                        )
+            
+            self.push_screen(NewEnvironmentScreen(), _after_input)
 
 
     class EnvTab_Extended(EnvTab):
