@@ -3,7 +3,7 @@
 Ficheiro: configurar.py
 
 Aplicação de terminal (TUI, baseada em textual) para gerir os ambientes locais
-do dispositivo IoT (ficheiros .env).
+do dispositivo IoT (ficheiros .env) e monitorar o estado dos relés.
 
 Lista os ambientes candidatos (.env.<sufixo>) que estão junto a este script,
 mostra os detalhes de cada um (DeviceId, dev/prod, chave de acesso mascarada),
@@ -18,14 +18,18 @@ preservados automaticamente) dois formatos:
 Após a troca, o serviço receive_messages.service é reiniciado para que a mudança
 seja imediata, sem reiniciar o sistema operativo.
 
+A aba "Relés" mostra o estado dos relés em tempo real (se relay_ops estiver
+disponível) e um histórico de activações desde que o TUI foi aberto.
+
 Executar a partir da pasta do projeto, com o ambiente virtual:
 
     .venv/bin/python configurar.py          # abrir a interface (TUI)
     .venv/bin/python configurar.py --listar  # listar os ambientes (sem interface)
 
-A única dependência externa é o `textual`; tudo o resto é da biblioteca padrão.
+Dependências externas: textual, e opcionalmente relay_ops/RPi.GPIO para monitorar relés.
 """
 import argparse
+import json
 import logging
 import os
 import re
@@ -33,7 +37,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
@@ -47,6 +53,7 @@ REPO_DIR = Path(__file__).resolve().parent
 ACTIVE_ENV = REPO_DIR / ".env"
 BACKUP_ENV = REPO_DIR / ".env.bak"
 SWITCH_TMP = REPO_DIR / ".env.__switch__"
+CONFIG_JSON = REPO_DIR / "config.json"
 SERVICE_NAME = "receive_messages.service"
 CONNECTION_KEY = "IOT_CONNECTION_STRING"
 RESTART_TIMEOUT_S = 60
@@ -54,6 +61,88 @@ RESTART_TIMEOUT_S = 60
 # Sufixos (a parte a seguir a ".env.") que não são ambientes seleccionáveis.
 _IGNORED_SUFFIXES = {"bak", "tmp", "sample", "example"}
 
+
+# ============================================================================
+# RELAY MONITORING
+# ============================================================================
+
+@dataclass
+class RelayEvent:
+    """Um evento de activação de relé."""
+    relay_number: int
+    machine_id: str
+    activated_at: datetime
+    duration_ms: int
+
+
+class RelayMonitor:
+    """Monitor de estado dos relés em tempo real."""
+
+    def __init__(self, config_path: Path = CONFIG_JSON):
+        self.config_path = config_path
+        self.relay_map: dict[int, str] = {}  # relay_number -> machine_id
+        self.active: set[int] = set()  # relay numbers currently on
+        self.history: list[RelayEvent] = []
+        self._lock = threading.Lock()
+        self._timers: dict[int, threading.Timer] = {}  # relay deactivation timers
+        self._load_config()
+
+    def _load_config(self):
+        """Carrega a configuração de relés a partir de config.json."""
+        try:
+            with open(self.config_path, 'r') as f:
+                config = json.load(f)
+            self.relay_map.clear()
+            for machine_id_str, machine_config in config.items():
+                if isinstance(machine_config, dict):
+                    relay_number = int(machine_config.get('relay_number', 0))
+                    if relay_number > 0:
+                        self.relay_map[relay_number] = machine_id_str
+            logging.info("RelayMonitor: carregou %d relés de config.json", len(self.relay_map))
+        except Exception as e:
+            logging.warning("RelayMonitor: falha ao carregar config.json: %s", e)
+
+    def on_activate(self, relay_number: int, duration_ms: int):
+        """Registar activação de um relé."""
+        with self._lock:
+            machine_id = self.relay_map.get(relay_number, "?")
+            event = RelayEvent(relay_number, machine_id, datetime.now(), duration_ms)
+            self.history.append(event)
+            self.active.add(relay_number)
+
+            # Agendar desactivação após duration_ms
+            if relay_number in self._timers:
+                self._timers[relay_number].cancel()
+            timer = threading.Timer(duration_ms / 1000.0, self._deactivate, args=(relay_number,))
+            timer.daemon = True
+            timer.start()
+            self._timers[relay_number] = timer
+
+    def _deactivate(self, relay_number: int):
+        """Desactivar um relé após timeout."""
+        with self._lock:
+            self.active.discard(relay_number)
+            if relay_number in self._timers:
+                del self._timers[relay_number]
+
+    def refresh_config(self):
+        """Re-carregar config.json (chamado quando o utilizador pressiona R)."""
+        self._load_config()
+
+    def get_active_relays(self) -> set[int]:
+        """Devolve conjunto de relés actualmente activos."""
+        with self._lock:
+            return self.active.copy()
+
+    def get_recent_history(self, n: int = 30) -> list[RelayEvent]:
+        """Devolve os últimos N eventos de activação."""
+        with self._lock:
+            return list(reversed(self.history[-n:]))
+
+
+# ============================================================================
+# ENVIRONMENT MANAGEMENT (original code)
+# ============================================================================
 
 @dataclass
 class EnvInfo:
@@ -308,18 +397,19 @@ def apply_environment(env: EnvInfo) -> ApplyResult:
     return ApplyResult(ok, env.name, env.device_id, messages)
 
 
-# --------------------------------------------------------------------------- #
-# Interface (TUI)
-# --------------------------------------------------------------------------- #
+# ============================================================================
+# TUI
+# ============================================================================
+
 try:
     from textual import work
     from textual.app import App, ComposeResult
     from textual.binding import Binding
     from textual.containers import Container, Horizontal, Vertical
     from textual.screen import ModalScreen
-    from textual.widgets import Button, DataTable, Footer, Header, Static
+    from textual.widgets import Button, DataTable, Footer, Header, Static, TabbedContent, TabPane
     _TEXTUAL_AVAILABLE = True
-except ImportError:  # pragma: no cover - só o caminho --listar funciona sem textual
+except ImportError:
     _TEXTUAL_AVAILABLE = False
 
 
@@ -391,46 +481,10 @@ if _TEXTUAL_AVAILABLE:
         def action_close(self) -> None:
             self.dismiss(None)
 
-    class EnvManagerApp(App):
-        """Aplicação principal: listar ambientes e trocar o activo."""
-
-        TITLE = "Digipay IoT - Gestão de Ambientes"
-
-        CSS = """
-        Screen { layout: vertical; }
-        #active-bar {
-            height: 3;
-            padding: 1 2;
-            background: $boost;
-            border-bottom: solid $primary;
-        }
-        #main { height: 1fr; }
-        #table-pane { width: 2fr; border-right: solid $primary; }
-        #detail-pane { width: 3fr; padding: 1 2; }
-        DataTable { height: 1fr; }
-        #detail-title { text-style: bold; padding-bottom: 1; }
-        #confirm-box, #result-box {
-            width: 72; height: auto; padding: 1 2;
-            border: thick $warning; background: $surface;
-        }
-        #result-box { border: thick $primary; }
-        #confirm-buttons { height: auto; padding-top: 1; }
-        #confirm-buttons Button, #result-box Button { margin: 1 1 0 0; }
-        ModalScreen { align: center middle; }
-        """
-
-        BINDINGS = [
-            Binding("a,enter", "apply", "Aplicar"),
-            Binding("r", "refresh", "Actualizar"),
-            Binding("q", "quit", "Sair"),
-        ]
-
-        def __init__(self) -> None:
-            super().__init__()
-            self._envs: List[EnvInfo] = []
+    class EnvTab(Static):
+        """Aba de gestão de ambientes (.env)."""
 
         def compose(self) -> ComposeResult:
-            yield Header()
             yield Static(id="active-bar")
             with Horizontal(id="main"):
                 with Vertical(id="table-pane"):
@@ -438,48 +492,38 @@ if _TEXTUAL_AVAILABLE:
                 with Vertical(id="detail-pane"):
                     yield Static("", id="detail-title")
                     yield Static("", id="detail-body")
-            yield Footer()
 
         def on_mount(self) -> None:
             table = self.query_one(DataTable)
             table.add_columns("", "Ficheiro", "Dispositivo", "Amb.")
             self._reload()
 
-        # -- dados --------------------------------------------------------- #
         def _reload(self) -> None:
-            self._envs = discover_envs()
+            envs = discover_envs()
             table = self.query_one(DataTable)
             saved_row = table.cursor_row
             table.clear()
-            for info in self._envs:
+            for info in envs:
                 marker = "[green]●[/green]" if info.is_active else " "
                 table.add_row(marker, ".env.%s" % info.name, info.device_id, info.env_type)
             self.query_one("#active-bar", Static).update(
                 "Ambiente activo: [b]%s[/b]    Serviço: %s"
                 % (active_summary(), SERVICE_NAME)
             )
-            if self._envs:
-                row = saved_row if 0 <= saved_row < len(self._envs) else 0
+            if envs:
+                row = saved_row if 0 <= saved_row < len(envs) else 0
                 table.move_cursor(row=row)
-                self._show_detail(row)
+                self._show_detail(row, envs)
             else:
                 self.query_one("#detail-title", Static).update("Nenhum ambiente .env.* encontrado")
                 self.query_one("#detail-body", Static).update(
                     "Coloque ficheiros .env.<id> junto a este script."
                 )
 
-        def _current_env(self) -> Optional[EnvInfo]:
-            if not self._envs:
-                return None
-            row = self.query_one(DataTable).cursor_row
-            if 0 <= row < len(self._envs):
-                return self._envs[row]
-            return None
-
-        def _show_detail(self, row: int) -> None:
-            if not (0 <= row < len(self._envs)):
+        def _show_detail(self, row: int, envs: list) -> None:
+            if not (0 <= row < len(envs)):
                 return
-            info = self._envs[row]
+            info = envs[row]
             active = " [green](activo)[/green]" if info.is_active else ""
             self.query_one("#detail-title", Static).update(".env.%s%s" % (info.name, active))
             self.query_one("#detail-body", Static).update(
@@ -490,38 +534,164 @@ if _TEXTUAL_AVAILABLE:
                 % (info.device_id, info.env_type, info.host, info.masked_connection)
             )
 
-        # -- eventos ------------------------------------------------------- #
         def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
-            self._show_detail(event.cursor_row)
+            envs = discover_envs()
+            self._show_detail(event.cursor_row, envs)
 
         def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-            self.action_apply()
+            self.app.action_apply()
 
-        # -- acções -------------------------------------------------------- #
-        def action_refresh(self) -> None:
-            self._reload()
-            self.notify("Actualizado")
+    class RelayTab(Static):
+        """Aba de monitoramento de relés."""
+
+        def __init__(self, monitor: RelayMonitor, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.monitor = monitor
+
+        def compose(self) -> ComposeResult:
+            yield Static("", id="relay-active-bar")
+            with Horizontal(id="relay-main"):
+                with Vertical(id="relay-status-pane"):
+                    yield DataTable(id="relay-status-table", cursor_type="row", zebra_stripes=True)
+                with Vertical(id="relay-history-pane"):
+                    yield Static("Histórico (desde abertura):", id="relay-history-title")
+                    yield DataTable(id="relay-history-table", cursor_type="row")
+
+        def on_mount(self) -> None:
+            # Tabela de estado dos relés
+            status_table = self.query_one("#relay-status-table", DataTable)
+            status_table.add_columns("Relé", "Máquina", "Estado")
+
+            # Tabela de histórico
+            hist_table = self.query_one("#relay-history-table", DataTable)
+            hist_table.add_columns("Hora", "Relé", "Máquina")
+
+            self._refresh_display()
+            self.set_interval(0.2, self._refresh_display)
+
+        def _refresh_display(self) -> None:
+            """Actualizar displays de relés activos e histórico."""
+            # Barra de relés activos
+            active = self.monitor.get_active_relays()
+            if not self.monitor.relay_map:
+                active_text = "Sem config.json ou nenhum relé configurado"
+            elif not active:
+                active_text = "Relés inactivos"
+            else:
+                active_list = " ".join("[green]●[/green] %d" % r for r in sorted(active))
+                active_text = "Relés activos: " + active_list
+
+            self.query_one("#relay-active-bar", Static).update(active_text)
+
+            # Tabela de estado
+            status_table = self.query_one("#relay-status-table", DataTable)
+            status_table.clear()
+            for relay_num in sorted(self.monitor.relay_map.keys()):
+                machine_id = self.monitor.relay_map[relay_num]
+                is_active = relay_num in active
+                state = "[green]● ACTIVO[/green]" if is_active else "○ inactivo"
+                status_table.add_row(str(relay_num), machine_id, state)
+
+            # Tabela de histórico
+            hist_table = self.query_one("#relay-history-table", DataTable)
+            hist_table.clear()
+            for event in self.monitor.get_recent_history(30):
+                time_str = event.activated_at.strftime("%H:%M:%S.%f")[:-3]
+                hist_table.add_row(time_str, str(event.relay_number), event.machine_id)
+
+    class EnvManagerApp(App):
+        """Aplicação principal: gestão de ambientes + monitoramento de relés."""
+
+        TITLE = "Digipay IoT - Gestão de Ambientes & Relés"
+
+        CSS = """
+        Screen { layout: vertical; }
+        #active-bar, #relay-active-bar {
+            height: 2;
+            padding: 0 2;
+            background: $boost;
+            border-bottom: solid $primary;
+        }
+        #main, #relay-main { height: 1fr; }
+        #table-pane, #relay-status-pane { width: 2fr; border-right: solid $primary; }
+        #detail-pane, #relay-history-pane { width: 3fr; padding: 1 2; }
+        DataTable { height: 1fr; }
+        #detail-title, #relay-history-title { text-style: bold; padding-bottom: 1; }
+        #confirm-box, #result-box {
+            width: 72; height: auto; padding: 1 2;
+            border: thick $warning; background: $surface;
+        }
+        #result-box { border: thick $primary; }
+        #confirm-buttons { height: auto; padding-top: 1; }
+        #confirm-buttons Button, #result-box Button { margin: 1 1 0 0; }
+        ModalScreen { align: center middle; }
+        TabbedContent { height: 1fr; }
+        """
+
+        BINDINGS = [
+            Binding("a,enter", "apply", "Aplicar", show=False),
+            Binding("r", "refresh", "Actualizar", show=False),
+            Binding("q", "quit", "Sair"),
+        ]
+
+        def __init__(self, monitor: RelayMonitor = None):
+            super().__init__()
+            self.monitor = monitor or RelayMonitor()
+
+        def compose(self) -> ComposeResult:
+            yield Header()
+            with TabbedContent("Ambientes", "Relés"):
+                with TabPane("Ambientes", id="tab-ambientes"):
+                    yield EnvTab()
+                with TabPane("Relés", id="tab-relés"):
+                    yield RelayTab(self.monitor)
+            yield Footer()
 
         def action_apply(self) -> None:
-            env = self._current_env()
-            if env is None:
+            """Aplicar ambiente (apenas na aba Ambientes)."""
+            if self.focused.id != "tab-ambientes":
                 return
+            env_tab = self.query_one(EnvTab)
+            table = env_tab.query_one(DataTable)
+            envs = discover_envs()
+            row = table.cursor_row
+            if 0 <= row < len(envs):
+                env = envs[row]
+                def _after_confirm(confirmed: Optional[bool]) -> None:
+                    if confirmed:
+                        env_tab._do_apply(env)
+                self.push_screen(ConfirmScreen(env), _after_confirm)
 
-            def _after_confirm(confirmed: Optional[bool]) -> None:
-                if confirmed:
-                    self._do_apply(env)
+        def action_refresh(self) -> None:
+            """Actualizar (comportamento depende da aba)."""
+            if self.focused.id == "tab-ambientes":
+                env_tab = self.query_one(EnvTab)
+                env_tab._reload()
+                self.notify("Ambientes actualizados")
+            elif self.focused.id == "tab-relés":
+                self.monitor.refresh_config()
+                relay_tab = self.query_one(RelayTab)
+                relay_tab._refresh_display()
+                self.notify("Relés actualizados")
 
-            self.push_screen(ConfirmScreen(env), _after_confirm)
+
+    class EnvTab_Extended(EnvTab):
+        """Extensão de EnvTab com suporte para threads de apply."""
 
         @work(thread=True, exclusive=True)
         def _do_apply(self, env: EnvInfo) -> None:
-            self.call_from_thread(self.notify, "A mudar para %s..." % env.device_id)
+            self.app.call_from_thread(self.notify, "A mudar para %s..." % env.device_id)
             result = apply_environment(env)
-            self.call_from_thread(self._apply_finished, result)
+            self.app.call_from_thread(self._apply_finished, result)
 
         def _apply_finished(self, result: ApplyResult) -> None:
             self._reload()
             self.push_screen(ResultScreen(result))
+
+    # Monkey-patch para adicionar o método _do_apply
+    EnvTab._do_apply = EnvTab_Extended._do_apply
+    EnvTab.notify = lambda self, msg: self.app.notify(msg)
+    EnvTab.push_screen = lambda self, screen: self.app.push_screen(screen)
 
 
 def _print_list() -> None:
@@ -538,6 +708,34 @@ def _print_list() -> None:
         marker = "*" if info.is_active else " "
         print("%-1s %-14s %-18s %-5s" % (marker, ".env." + info.name, info.device_id, info.env_type))
     print("\n(* = activo)")
+
+
+def _wrap_relay_ops(monitor: RelayMonitor):
+    """Envolve as funções relay_ops para reportar activações ao monitor."""
+    try:
+        import relay_ops as _relay_ops
+
+        def _make_wrapper(original_fn):
+            def wrapper(machine_id: int, number_of_impulses: int = 1):
+                result = original_fn(machine_id, number_of_impulses)
+                try:
+                    mapping = _relay_ops.load_relay_mapping_v1_2()
+                    entry = mapping.get(machine_id)
+                    if entry:
+                        monitor.on_activate(int(entry['relay_number']), int(entry['time_relay_ms']))
+                except Exception:
+                    pass  # Nunca deixar que o monitoramento quebre o serviço
+                return result
+            return wrapper
+
+        _relay_ops.activate_machine_v1_0 = _make_wrapper(_relay_ops.activate_machine_v1_0)
+        _relay_ops.activate_machine_v1_1 = _make_wrapper(_relay_ops.activate_machine_v1_1)
+        _relay_ops.activate_machine_v1_2 = _make_wrapper(_relay_ops.activate_machine_v1_2)
+        logging.info("RelayOps wrapping: sucesso")
+    except ImportError:
+        logging.warning("RelayOps não disponível; monitoramento desactivado")
+    except Exception as e:
+        logging.warning("Falha ao envolver relay_ops: %s", e)
 
 
 def main() -> None:
@@ -558,7 +756,6 @@ def main() -> None:
     if not _TEXTUAL_AVAILABLE:
         logging.info("textual não encontrado; a instalar...")
         try:
-            # Use the venv's pip, not system pip (avoids PEP 668 issues)
             venv_pip = os.path.join(os.path.dirname(sys.executable), "pip")
             subprocess.run(
                 [venv_pip, "install", "textual==8.2.7"],
@@ -572,7 +769,11 @@ def main() -> None:
                 "Instale manualmente com: .venv/bin/pip install textual==8.2.7"
             )
 
-    EnvManagerApp().run()
+    monitor = RelayMonitor()
+    _wrap_relay_ops(monitor)
+
+    app = EnvManagerApp(monitor)
+    app.run()
 
 
 if __name__ == "__main__":
