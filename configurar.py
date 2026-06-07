@@ -558,17 +558,18 @@ def main() -> None:
     if not _TEXTUAL_AVAILABLE:
         logging.info("textual não encontrado; a instalar...")
         try:
+            # Use the venv's pip, not system pip (avoids PEP 668 issues)
+            venv_pip = os.path.join(os.path.dirname(sys.executable), "pip")
             subprocess.run(
-                ["pip", "install", "textual==8.2.7"],
+                [venv_pip, "install", "textual==8.2.7"],
                 check=True,
             )
             logging.info("textual instalado com sucesso; a reiniciar...")
-            import sys
             os.execvp(sys.executable, [sys.executable, __file__] + sys.argv[1:])
         except subprocess.CalledProcessError:
             raise SystemExit(
                 "Falha ao instalar textual. "
-                "Instale manualmente com: pip install textual==8.2.7"
+                "Instale manualmente com: .venv/bin/pip install textual==8.2.7"
             )
 
     EnvManagerApp().run()
