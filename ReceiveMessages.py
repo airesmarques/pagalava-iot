@@ -16,8 +16,11 @@ from azure.iot.device import IoTHubDeviceClient
 import relay_ops
 from relay_ops import MachineNotConfiguredException  # Import the custom exception
 
-# Load environment variables from .env file
-load_dotenv()
+# Load environment variables from .env file.
+# override=True makes the .env file authoritative even when the systemd unit
+# also sets IOT_CONNECTION_STRING, so switching .env (e.g. via env_manager.py)
+# reliably takes effect after a service restart.
+load_dotenv(override=True)
 
 # Configure logging with timestamp and log level
 logging.basicConfig(
