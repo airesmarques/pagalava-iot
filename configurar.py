@@ -694,7 +694,9 @@ if _TEXTUAL_AVAILABLE:
 
         def action_apply(self) -> None:
             """Aplicar ambiente (apenas na aba Ambientes)."""
-            if self.focused.id != "tab-ambientes":
+            # Get the active tab pane
+            tabbed = self.query_one(TabbedContent)
+            if tabbed.active != "tab-ambientes":
                 return
             env_tab = self.query_one(EnvTab)
             table = env_tab.query_one(DataTable)
@@ -709,11 +711,12 @@ if _TEXTUAL_AVAILABLE:
 
         def action_refresh(self) -> None:
             """Actualizar (comportamento depende da aba)."""
-            if self.focused.id == "tab-ambientes":
+            tabbed = self.query_one(TabbedContent)
+            if tabbed.active == "tab-ambientes":
                 env_tab = self.query_one(EnvTab)
                 env_tab._reload()
                 self.notify("Ambientes actualizados")
-            elif self.focused.id == "tab-reles":
+            elif tabbed.active == "tab-reles":
                 self.monitor.refresh_config()
                 relay_tab = self.query_one(RelayTab)
                 relay_tab._refresh_display()
