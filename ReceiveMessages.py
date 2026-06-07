@@ -149,8 +149,8 @@ def message_activate(json_data: dict):
                 machine_id=machine_id,
                 number_of_impulses=number_of_impulses
             )
-        elif VERSION.startswith("1.5"):
-            logging.info("%s: Using v1.5 activation method (v1.2 relay + callback)", func_name)
+        elif VERSION.startswith("1.5") or VERSION.startswith("1.6"):
+            logging.info("%s: Using v1.5+ activation method (v1.2 relay + callback)", func_name)
             relay_ops.activate_machine_v1_2(
                 machine_id=machine_id,
                 number_of_impulses=number_of_impulses
