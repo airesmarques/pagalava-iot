@@ -190,6 +190,32 @@ Para fazer atualizações ao software, deve executar o comando abaixo:
 
 Após a execução, deve fazer um reboot ou reinicializar o servico "receive_messages.service".
 
+## Gestão de ambientes (configurar)
+
+O dispositivo pode ter vários ambientes guardados localmente em ficheiros `.env.<id>`
+(por exemplo `.env.1`, `.env.140`, `.env.prod.02`). O ambiente activo é aquele para
+onde `.env` aponta (normalmente um symlink, por exemplo `.env -> .env.1`).
+
+Para ver e trocar o ambiente activo existe uma aplicação de terminal (TUI) baseada em
+`textual`. Execute a partir da pasta do projeto, usando o ambiente virtual:
+
+```bash
+.venv/bin/python configurar.py
+```
+
+A aplicação lista os ambientes disponíveis, mostra o `DeviceId` e se é `dev` ou `prod`
+(a chave de acesso é sempre mascarada), e marca o ambiente activo. Ao escolher um
+ambiente e confirmar, o `.env` é actualizado (o symlink é reapontado; se o `.env` for
+um ficheiro normal, é copiado com backup em `.env.bak`) e o serviço
+`receive_messages.service` é reiniciado, pelo que a mudança fica imediata sem reiniciar
+o sistema operativo.
+
+Para apenas listar os ambientes (sem interface, útil por SSH não interativo):
+
+```bash
+.venv/bin/python configurar.py --listar
+```
+
 ## Configuração das máquinas de lavar e secar
 
 A configuração das máquinas é feita na dashboard PagaLava:
@@ -243,6 +269,8 @@ Após a remoção da instalação do PagaLava, pode ser reinstalado de forma seg
 | 1.4    | 25/02/2026 | Verificação de conectividade remota: ao receber mensagem de diagnóstico, o dispositivo envia        |
 |        |            | callback HTTP para a cloud com o endereço IP local e código de verificação, permitindo confirmar    |
 |        |            | a conectividade e IP do dispositivo diretamente a partir da dashboard PagaLava                      |
+| 1.6    | 07/06/2026 | Adicionada aplicação de terminal (configurar) para ver e trocar o ambiente activo (.env)            |
+|        |            | `.env` passa a ser autoritativo (load_dotenv override); nova dependência `textual`                  |
 
 ## Referências
 
