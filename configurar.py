@@ -362,8 +362,13 @@ def create_new_environment(conn_str: str) -> tuple[bool, str, str]:
     if not parsed:
         return False, "Ligação inválida: não foi possível analisar a string", None
     
-    # Generate environment name from device_id
-    env_name = parsed['device_id'].lower()
+    # Generate environment name: extract device number and use env_type prefix
+    device_id = parsed['device_id']
+    # Extract the device number (e.g., "99" from "rpiPagalava99")
+    match = re.search(r'(\d+)$', device_id)
+    device_num = match.group(1) if match else device_id.lower()
+    env_type_prefix = parsed['env_type'][:3]  # "dev" or "pro"
+    env_name = f"{env_type_prefix}.{device_num}"
     env_path = REPO_DIR / f".env.{env_name}"
     
     # Check if already exists
