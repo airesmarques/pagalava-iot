@@ -15,6 +15,7 @@ from azure.iot.device import IoTHubDeviceClient
 
 import relay_ops
 from relay_ops import MachineNotConfiguredException  # Import the custom exception
+from heartbeat import start_heartbeat_thread
 
 # Load environment variables from .env file.
 # override=True makes the .env file authoritative even when the systemd unit
@@ -149,7 +150,7 @@ def message_activate(json_data: dict):
                 machine_id=machine_id,
                 number_of_impulses=number_of_impulses
             )
-        elif VERSION.startswith("1.5") or VERSION.startswith("1.6"):
+        elif VERSION.startswith(("1.5", "1.6", "1.7", "1.8")):
             logging.info("%s: Using v1.5+ activation method (v1.2 relay + callback)", func_name)
             relay_ops.activate_machine_v1_2(
                 machine_id=machine_id,
@@ -484,7 +485,12 @@ def check_internet_connection():
 def main():
     """Main function with reconnection logic following Azure best practices"""
     logging.info("Starting the Python IoT Hub C2D Messaging device sample...")
-    
+
+    # Liveness heartbeat (S37, v1.8+): daemon thread, independent of the
+    # IoT Hub connection so the cloud watchdog still sees the device while
+    # the hub connection is down or reconnecting.
+    start_heartbeat_thread(DEVICE_ID, determine_environment()["url"])
+
     # Initialize client at a broader scope so we can access it in finally block
     client = None
     
