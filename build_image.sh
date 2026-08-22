@@ -177,8 +177,17 @@ install -m 644 ${WORKINGDIR}/pagalava-firstboot.service /etc/systemd/system/paga
 # First boot is enabled; the messaging service is NOT. An image booted without a
 # provisioning file must sit idle rather than crash-loop on a missing
 # connection string — firstboot.sh is what enables it once there is one.
-systemctl enable pagalava-firstboot.service
-systemctl disable receive_messages.service 2>/dev/null || true
+#
+# These symlinks are made by hand because systemd REFUSES to enable or disable
+# units inside a chroot — it prints "Running in chroot, ignoring request." and
+# returns success, so `systemctl enable` here is a silent no-op. An image built
+# that way boots and then sits there doing nothing, forever, with no error
+# anywhere. Creating the wants symlink is exactly what `enable` does.
+mkdir -p /etc/systemd/system/multi-user.target.wants
+ln -sf /etc/systemd/system/pagalava-firstboot.service \
+       /etc/systemd/system/multi-user.target.wants/pagalava-firstboot.service
+# And make certain the messaging service is not enabled.
+rm -f /etc/systemd/system/multi-user.target.wants/receive_messages.service
 
 apt-get clean
 rm -rf /var/lib/apt/lists/*
