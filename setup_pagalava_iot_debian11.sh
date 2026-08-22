@@ -17,8 +17,32 @@ sudo apt-get update && sudo apt-get upgrade -y
 echo "Installing Git, Python3, PIP, GPIO library, Python Virtual environments..."
 sudo apt-get install git python3 python3-pip python3-rpi.gpio python3-venv -y
 
-echo "Por favor introduz o valor da IOT_CONNECTION_STRING:"
-read -r IOT_CONNECTION_STRING
+# Prefer a provisioning file dropped on the SD card's boot partition, so an
+# installer who downloaded one from the dashboard does not have to paste a
+# secret into a terminal.
+#
+# BACKWARD COMPATIBILITY: when there is no such file this prompts exactly as it
+# always has. The legacy procedure in the readme must keep working verbatim.
+IOT_CONNECTION_STRING=""
+for _bootdir in /boot/firmware /boot; do
+    [ -d "$_bootdir" ] || continue
+    for _provfile in "$_bootdir"/pagalava-provisioning*.txt; do
+        [ -f "$_provfile" ] || continue
+        # -f2- because the connection string itself contains '=' characters.
+        _found="$(grep -m1 '^IOT_CONNECTION_STRING=' "$_provfile" | cut -d= -f2- | tr -d '"')"
+        if [ -n "$_found" ]; then
+            IOT_CONNECTION_STRING="$_found"
+            echo "A usar o ficheiro de instalacao encontrado em: ${_provfile}"
+            break
+        fi
+    done
+    [ -n "$IOT_CONNECTION_STRING" ] && break
+done
+
+if [ -z "$IOT_CONNECTION_STRING" ]; then
+    echo "Por favor introduz o valor da IOT_CONNECTION_STRING:"
+    read -r IOT_CONNECTION_STRING
+fi
 
 # Check if the connection string is empty
 if [ -z "$IOT_CONNECTION_STRING" ]; then
