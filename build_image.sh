@@ -29,6 +29,12 @@ RPIOS_XZ="$(basename "$RPIOS_URL")"
 RPIOS_IMG="${RPIOS_XZ%.xz}"
 
 REPO_URL="https://github.com/airesmarques/pagalava-iot"
+# Which revision goes into the image. Override to build a release candidate
+# before it is on main.
+REPO_REF="${REPO_REF:-main}"
+# Build from a local working tree instead of cloning. Needed to test a branch
+# that has not been pushed, and to build reproducibly while offline.
+LOCAL_REPO="${LOCAL_REPO:-}"
 PAGALAVA_USER="pagalava"
 WORKINGDIR="/home/${PAGALAVA_USER}/pagalava-iot"
 VENVDIR="${WORKINGDIR}/.venv"
@@ -102,6 +108,22 @@ export DEBIAN_FRONTEND=noninteractive
 id -u ${PAGALAVA_USER} >/dev/null 2>&1 || useradd -m -s /bin/bash ${PAGALAVA_USER}
 usermod -aG gpio,spi,i2c,dialout,sudo ${PAGALAVA_USER} 2>/dev/null || true
 
+# Daemons must not start inside the chroot — there is no init here and their
+# start scripts hang or fail.
+printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d
+chmod +x /usr/sbin/policy-rc.d
+
+# initramfs-tools and raspi-firmware cannot run their maintainer scripts under
+# emulation: they look for a real boot device and an initramfs to rebuild, and
+# fail the whole apt transaction when they do not find one. Observed as:
+#   Errors were encountered while processing:
+#    initramfs-tools-core / initramfs-tools / raspi-firmware
+#   E: Sub-process /usr/bin/dpkg returned an error code (1)
+# Hold them. The stock image's kernel and firmware are already the ones we
+# want to ship; nothing here needs a newer boot chain, and upgrading it is the
+# one thing most likely to produce an image that will not boot.
+apt-mark hold raspi-firmware initramfs-tools initramfs-tools-core >/dev/null
+
 apt-get update
 apt-get -y upgrade
 apt-get -y install git python3 python3-venv python3-pip python3-dev build-essential
@@ -109,7 +131,14 @@ apt-get -y install git python3 python3-venv python3-pip python3-dev build-essent
 # SPI is needed by the relay boards.
 raspi-config nonint do_spi 0 || true
 
-git clone ${REPO_URL} ${WORKINGDIR}
+if [ -d /tmp/pagalava-src ]; then
+    # Seeded from LOCAL_REPO by the host before the chroot ran.
+    mkdir -p ${WORKINGDIR}
+    cp -a /tmp/pagalava-src/. ${WORKINGDIR}/
+    rm -rf /tmp/pagalava-src
+else
+    git clone --branch ${REPO_REF} --depth 1 ${REPO_URL} ${WORKINGDIR}
+fi
 chown -R ${PAGALAVA_USER}:${PAGALAVA_USER} ${WORKINGDIR}
 
 sudo -u ${PAGALAVA_USER} python3 -m venv ${VENVDIR}
@@ -142,6 +171,7 @@ StartLimitBurst=3
 WantedBy=multi-user.target
 UNIT
 
+chmod 755 ${WORKINGDIR}/firstboot.sh
 install -m 644 ${WORKINGDIR}/pagalava-firstboot.service /etc/systemd/system/pagalava-firstboot.service
 
 # First boot is enabled; the messaging service is NOT. An image booted without a
@@ -152,8 +182,24 @@ systemctl disable receive_messages.service 2>/dev/null || true
 
 apt-get clean
 rm -rf /var/lib/apt/lists/*
+
+# Leave the image in a normal state: a held package or a permanent
+# policy-rc.d would silently change how the device behaves later.
+apt-mark unhold raspi-firmware initramfs-tools initramfs-tools-core >/dev/null
+rm -f /usr/sbin/policy-rc.d
 INSIDE
 chmod +x "${MNT}/tmp/build-inside.sh"
+
+if [ -n "$LOCAL_REPO" ]; then
+    [ -d "$LOCAL_REPO" ] || fail "LOCAL_REPO='$LOCAL_REPO' is not a directory"
+    log "seeding source from ${LOCAL_REPO} (not cloning)"
+    mkdir -p "${MNT}/tmp/pagalava-src"
+    # --exclude .git keeps the image small; the device does not need history.
+    # dist/ would otherwise nest a previous image inside this one.
+    tar -C "$LOCAL_REPO" --exclude=.git --exclude=dist --exclude=.venv -cf - . \
+        | tar -C "${MNT}/tmp/pagalava-src" -xf -
+fi
+
 chroot "$MNT" /tmp/build-inside.sh
 
 log "stripping identity"
