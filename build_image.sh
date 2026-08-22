@@ -97,10 +97,21 @@ mount -t sysfs sys "${MNT}/sys"
 cp /etc/resolv.conf "${MNT}/etc/resolv.conf"
 
 log "provisioning the image (chroot)"
-cat > "${MNT}/tmp/build-inside.sh" <<INSIDE
+# QUOTED heredoc: the host must not expand anything in here. Configuration
+# reaches the script through the environment on the chroot call below, so a
+# stray backtick or $(...) in a comment cannot execute at write time.
+cat > "${MNT}/tmp/build-inside.sh" <<'INSIDE'
 #!/bin/bash
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
+
+# Supplied by the chroot call. ${VAR:?} aborts with a clear message rather than
+# letting an empty value produce an image with nonsense paths in it.
+: "${PAGALAVA_USER:?not set by the caller}"
+: "${WORKINGDIR:?not set by the caller}"
+: "${VENVDIR:?not set by the caller}"
+: "${REPO_URL:?not set by the caller}"
+: "${REPO_REF:?not set by the caller}"
 
 # The default user does not exist in a stock image; normally the Imager creates
 # one. The image ships with a fixed unprivileged account instead, because the
@@ -180,9 +191,14 @@ install -m 644 ${WORKINGDIR}/pagalava-firstboot.service /etc/systemd/system/paga
 #
 # These symlinks are made by hand because systemd REFUSES to enable or disable
 # units inside a chroot — it prints "Running in chroot, ignoring request." and
-# returns success, so `systemctl enable` here is a silent no-op. An image built
+# returns success, so 'systemctl enable' here is a silent no-op. An image built
 # that way boots and then sits there doing nothing, forever, with no error
-# anywhere. Creating the wants symlink is exactly what `enable` does.
+# anywhere. Creating the wants symlink is exactly what enable itself does.
+#
+# NOTE: no backticks anywhere in this heredoc. It is unquoted (<<INSIDE) so the
+# host expands it, and a backtick in a comment is still command substitution:
+# an earlier version of this comment ran the 'enable' builtin at write time and
+# its multi-line output broke out of the comment and became real commands.
 mkdir -p /etc/systemd/system/multi-user.target.wants
 ln -sf /etc/systemd/system/pagalava-firstboot.service \
        /etc/systemd/system/multi-user.target.wants/pagalava-firstboot.service
@@ -199,6 +215,10 @@ rm -f /usr/sbin/policy-rc.d
 INSIDE
 chmod +x "${MNT}/tmp/build-inside.sh"
 
+# Cheap insurance: a malformed generated script should fail here, with the
+# image still untouched, rather than halfway through the chroot.
+bash -n "${MNT}/tmp/build-inside.sh" || fail "generated build-inside.sh is not valid bash"
+
 if [ -n "$LOCAL_REPO" ]; then
     [ -d "$LOCAL_REPO" ] || fail "LOCAL_REPO='$LOCAL_REPO' is not a directory"
     log "seeding source from ${LOCAL_REPO} (not cloning)"
@@ -209,7 +229,13 @@ if [ -n "$LOCAL_REPO" ]; then
         | tar -C "${MNT}/tmp/pagalava-src" -xf -
 fi
 
-chroot "$MNT" /tmp/build-inside.sh
+chroot "$MNT" /usr/bin/env \
+    PAGALAVA_USER="$PAGALAVA_USER" \
+    WORKINGDIR="$WORKINGDIR" \
+    VENVDIR="$VENVDIR" \
+    REPO_URL="$REPO_URL" \
+    REPO_REF="$REPO_REF" \
+    /tmp/build-inside.sh
 
 log "stripping identity"
 # Anything that would make two devices flashed from this image indistinguishable
