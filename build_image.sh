@@ -188,7 +188,6 @@ fi
 echo "  clean"
 
 log "packing"
-cleanup_mounts_only=1
 for m in dev/pts dev proc sys boot/firmware ""; do
     mountpoint -q "${MNT}/${m}" && umount -l "${MNT}/${m}"
 done
