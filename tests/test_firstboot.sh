@@ -87,8 +87,11 @@ test_happy_path() {
         "$(ls "${BOOTDIR}"/pagalava-provisioning*.txt 2>/dev/null | wc -l)" "0"
     check "happy path enables the service" \
         "$(grep -c '^enable receive_messages.service$' "$SYSTEMCTL_LOG")" "1"
-    check "happy path restarts the service" \
-        "$(grep -c '^restart receive_messages.service$' "$SYSTEMCTL_LOG")" "1"
+    # --no-block is load-bearing: without it firstboot deadlocks against the
+    # very service it is ordered before, and the device hangs at boot. Pin the
+    # exact form so it cannot be dropped as noise.
+    check "happy path restarts the service without blocking" \
+        "$(grep -c '^restart --no-block receive_messages.service$' "$SYSTEMCTL_LOG")" "1"
     check "happy path locks down .env" \
         "$(stat -c '%a' "${WORKDIR}/.env")" "600"
     teardown

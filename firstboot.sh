@@ -128,7 +128,14 @@ main() {
 
     log "enabling ${SERVICENAME}"
     systemctl enable "$SERVICENAME"
-    systemctl restart "$SERVICENAME"
+
+    # --no-block is REQUIRED, not an optimisation. This script runs as a unit
+    # ordered Before=receive_messages.service, so a blocking restart deadlocks:
+    # systemctl waits for the service to start, while systemd holds that start
+    # job back until this unit finishes. The device hangs at boot and never
+    # comes up. With --no-block the job is queued and runs as soon as we exit,
+    # which is exactly what the ordering is there to arrange.
+    systemctl restart --no-block "$SERVICENAME"
 
     log "provisioning complete"
 }

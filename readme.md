@@ -100,8 +100,45 @@ Por exemplo, o relés com indice 9, que é o primeiro do segundo módulo de rel�
 
 
 
+## Ficheiro de instalação (sem escrever a connection string)
+
+A connection string identifica o dispositivo e é o único passo verdadeiramente
+delicado da instalação. Em vez de a escrever no terminal, pode descarregá-la do
+dashboard e copiá-la para o cartão SD.
+
+**No dashboard:** abra a lavandaria → *Ligar Raspberry* → **Descarregar ficheiro
+de instalação**. Obtém um ficheiro `pagalava-provisioning-laundry-<id>.txt`.
+
+**No cartão SD:** copie esse ficheiro para a **partição de arranque** (a partição
+pequena, em FAT, que o Windows e o macOS montam como `boot` / `bootfs`). Não o
+coloque em nenhuma subpasta.
+
+A partir daqui há dois caminhos:
+
+- **Imagem PagaLava** (ver secção seguinte): ligue o Raspberry e ele configura-se
+  sozinho no primeiro arranque. Não é preciso SSH.
+- **Instalação normal:** siga o procedimento habitual abaixo. Os scripts de
+  instalação passaram a procurar este ficheiro e, se o encontrarem, deixam de
+  pedir a connection string.
+
+> **Atenção:** este ficheiro contém a credencial do dispositivo. Quem tiver o
+> ficheiro, ou uma cópia do cartão, consegue fazer-se passar por esta lavandaria.
+> A imagem PagaLava apaga-o do cartão no primeiro arranque; nas instalações
+> normais, apague-o do cartão e da pasta de downloads depois de terminar.
+>
+> Se o mesmo ficheiro for usado em dois Raspberry, ambos ficam com a mesma
+> identidade e o comportamento é imprevisível. Um ficheiro por dispositivo.
+
+Se copiar dois ficheiros de instalação para o mesmo cartão, o Raspberry
+**recusa-se a arrancar configurado** em vez de adivinhar qual usar. Deixe apenas
+um e reinicie.
+
 ## Configuração do sistema PagaLava
 Localize o Raspberry na sua rede, identificando o endereço IP, e ligue-se ao Raspberry por SSH.
+
+Este é o procedimento clássico e continua a funcionar exactamente como sempre.
+Se tiver copiado um ficheiro de instalação para o cartão, o script encontra-o e
+não pergunta nada; caso contrário pede a connection string como antes.
 
 Não é necessário atualizar o sistema operativo, os updates serão executados no script de instalação.
 

@@ -1,0 +1,203 @@
+#!/bin/bash
+#
+# Build a PagaLava golden image from Raspberry Pi OS Lite (64-bit).
+#
+# The result is a .img.xz that an installer flashes with Raspberry Pi Imager,
+# drops a provisioning file onto, and boots. Everything the setup scripts do at
+# install time — apt upgrade, packages, venv, pip install — is done here once,
+# per firmware release, instead of once per device over the installer's tether.
+#
+# The image contains NO identity: no .env, no connection string, no SSH host
+# keys, no WiFi credentials. It is the same file for every customer. First boot
+# (firstboot.sh) is what turns it into a specific laundry's device.
+#
+# Run on a Debian/Ubuntu x86_64 host. ARM binaries in the image are executed
+# through binfmt/qemu-user-static, so no Pi is needed to build.
+#
+# Usage: sudo ./build_image.sh [output-directory]
+
+set -euo pipefail
+
+OUTDIR="${1:-$(pwd)/dist}"
+WORKDIR="$(mktemp -d /var/tmp/pagalava-image-XXXXXX)"
+MNT="${WORKDIR}/mnt"
+
+# Pinned rather than "latest": a golden image is only useful if it is
+# reproducible, and Raspberry Pi OS "latest" moves under you.
+RPIOS_URL="https://downloads.raspberrypi.com/raspios_lite_arm64/images/raspios_lite_arm64-2024-11-19/2024-11-19-raspios-bookworm-arm64-lite.img.xz"
+RPIOS_XZ="$(basename "$RPIOS_URL")"
+RPIOS_IMG="${RPIOS_XZ%.xz}"
+
+REPO_URL="https://github.com/airesmarques/pagalava-iot"
+PAGALAVA_USER="pagalava"
+WORKINGDIR="/home/${PAGALAVA_USER}/pagalava-iot"
+VENVDIR="${WORKINGDIR}/.venv"
+# Grow the root filesystem by this much to fit apt packages and the venv.
+GROW_MB=2048
+
+VERSION="$(python3 -c 'import json;print(json.load(open("version.json"))["version"])' 2>/dev/null || echo "unknown")"
+OUTNAME="pagalava-iot-${VERSION}-arm64.img"
+
+log()  { echo ""; echo "=== $* ==="; }
+fail() { echo "ERROR: $*" >&2; exit 1; }
+
+cleanup() {
+    set +e
+    # Order matters: nested mounts first, or the umounts fail and the loop
+    # device stays attached, leaving the host with stale mounts.
+    for m in dev/pts dev proc sys boot/firmware ""; do
+        mountpoint -q "${MNT}/${m}" && umount -l "${MNT}/${m}"
+    done
+    [ -n "${LOOPDEV:-}" ] && losetup -d "$LOOPDEV" 2>/dev/null
+    rm -rf "$WORKDIR"
+}
+trap cleanup EXIT
+
+[ "$(id -u)" -eq 0 ] || fail "must run as root (needs losetup and mount)"
+
+log "checking host tooling"
+for t in wget xz losetup parted resize2fs e2fsck qemu-aarch64-static; do
+    command -v "$t" >/dev/null || fail "missing '$t'. Install: apt-get install -y wget xz-utils parted e2fsprogs qemu-user-static binfmt-support"
+done
+# Without binfmt registration, every command in the chroot dies with ENOEXEC.
+[ -f /proc/sys/fs/binfmt_misc/qemu-aarch64 ] || fail "qemu-aarch64 binfmt not registered. Try: apt-get install -y binfmt-support qemu-user-static && systemctl restart systemd-binfmt"
+
+mkdir -p "$OUTDIR" "$MNT"
+
+log "fetching Raspberry Pi OS Lite"
+if [ ! -f "${OUTDIR}/${RPIOS_XZ}" ]; then
+    wget -q --show-progress -O "${OUTDIR}/${RPIOS_XZ}" "$RPIOS_URL"
+fi
+cp "${OUTDIR}/${RPIOS_XZ}" "${WORKDIR}/${RPIOS_XZ}"
+xz -d "${WORKDIR}/${RPIOS_XZ}"
+
+log "growing the image by ${GROW_MB}MB"
+# The stock Lite image has almost no slack; apt plus the venv will not fit.
+dd if=/dev/zero bs=1M count="$GROW_MB" >> "${WORKDIR}/${RPIOS_IMG}" 2>/dev/null
+parted -s "${WORKDIR}/${RPIOS_IMG}" resizepart 2 100%
+
+LOOPDEV="$(losetup -f --show -P "${WORKDIR}/${RPIOS_IMG}")"
+e2fsck -fp "${LOOPDEV}p2" >/dev/null 2>&1 || true
+resize2fs "${LOOPDEV}p2" >/dev/null
+
+log "mounting"
+mount "${LOOPDEV}p2" "$MNT"
+mkdir -p "${MNT}/boot/firmware"
+mount "${LOOPDEV}p1" "${MNT}/boot/firmware"
+mount --bind /dev  "${MNT}/dev"
+mount --bind /dev/pts "${MNT}/dev/pts"
+mount -t proc proc "${MNT}/proc"
+mount -t sysfs sys "${MNT}/sys"
+cp /etc/resolv.conf "${MNT}/etc/resolv.conf"
+
+log "provisioning the image (chroot)"
+cat > "${MNT}/tmp/build-inside.sh" <<INSIDE
+#!/bin/bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+# The default user does not exist in a stock image; normally the Imager creates
+# one. The image ships with a fixed unprivileged account instead, because the
+# systemd unit and firstboot.sh both need a known home directory.
+id -u ${PAGALAVA_USER} >/dev/null 2>&1 || useradd -m -s /bin/bash ${PAGALAVA_USER}
+usermod -aG gpio,spi,i2c,dialout,sudo ${PAGALAVA_USER} 2>/dev/null || true
+
+apt-get update
+apt-get -y upgrade
+apt-get -y install git python3 python3-venv python3-pip python3-dev build-essential
+
+# SPI is needed by the relay boards.
+raspi-config nonint do_spi 0 || true
+
+git clone ${REPO_URL} ${WORKINGDIR}
+chown -R ${PAGALAVA_USER}:${PAGALAVA_USER} ${WORKINGDIR}
+
+sudo -u ${PAGALAVA_USER} python3 -m venv ${VENVDIR}
+sudo -u ${PAGALAVA_USER} ${VENVDIR}/bin/pip install --no-cache-dir -q -r ${WORKINGDIR}/requirements.txt
+
+# The messaging unit. Note there is deliberately NO
+# Environment="IOT_CONNECTION_STRING=..." line: the image has no credential to
+# bake, and .env must be the single source of truth. The legacy setup scripts
+# still write that line on devices they install, and those devices are left
+# alone — this applies to the image only.
+cat > /etc/systemd/system/receive_messages.service <<UNIT
+[Unit]
+Description=Receive Messages Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=${PAGALAVA_USER}
+Group=${PAGALAVA_USER}
+WorkingDirectory=${WORKINGDIR}
+Environment="PATH=${VENVDIR}/bin"
+ExecStart=${VENVDIR}/bin/python ${WORKINGDIR}/ReceiveMessages.py
+
+Restart=on-failure
+RestartSec=5s
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+install -m 644 ${WORKINGDIR}/pagalava-firstboot.service /etc/systemd/system/pagalava-firstboot.service
+
+# First boot is enabled; the messaging service is NOT. An image booted without a
+# provisioning file must sit idle rather than crash-loop on a missing
+# connection string — firstboot.sh is what enables it once there is one.
+systemctl enable pagalava-firstboot.service
+systemctl disable receive_messages.service 2>/dev/null || true
+
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+INSIDE
+chmod +x "${MNT}/tmp/build-inside.sh"
+chroot "$MNT" /tmp/build-inside.sh
+
+log "stripping identity"
+# Anything that would make two devices flashed from this image indistinguishable
+# in the wrong way, or that would leak the build host.
+rm -f  "${MNT}/tmp/build-inside.sh"
+rm -f  "${MNT}"/etc/ssh/ssh_host_*             # regenerated on first boot
+rm -f  "${MNT}${WORKINGDIR}/.env"              # must not exist
+rm -f  "${MNT}${WORKINGDIR}/config.json"
+rm -f  "${MNT}/etc/wpa_supplicant/wpa_supplicant.conf"
+rm -f  "${MNT}/root/.bash_history" "${MNT}/home/${PAGALAVA_USER}/.bash_history"
+rm -f  "${MNT}/etc/machine-id"; : > "${MNT}/etc/machine-id"
+rm -rf "${MNT}/var/log/"*
+: > "${MNT}/etc/resolv.conf"
+
+log "verifying the image carries no identity"
+problems=0
+[ -f "${MNT}${WORKINGDIR}/.env" ] && { echo "  .env present!"; problems=1; }
+if grep -rqs "IOT_CONNECTION_STRING=" "${MNT}/etc/systemd/system/"; then
+    echo "  a systemd unit carries a connection string!"; problems=1
+fi
+if [ -n "$(ls "${MNT}"/etc/ssh/ssh_host_* 2>/dev/null)" ]; then
+    echo "  SSH host keys present!"; problems=1
+fi
+if [ -e "${MNT}/etc/systemd/system/multi-user.target.wants/receive_messages.service" ]; then
+    echo "  receive_messages.service is enabled — it must ship disabled!"; problems=1
+fi
+if [ ! -e "${MNT}/etc/systemd/system/multi-user.target.wants/pagalava-firstboot.service" ]; then
+    echo "  pagalava-firstboot.service is NOT enabled — the image cannot provision itself!"; problems=1
+fi
+[ "$problems" -eq 0 ] || fail "image failed its own checks; not publishing"
+echo "  clean"
+
+log "packing"
+cleanup_mounts_only=1
+for m in dev/pts dev proc sys boot/firmware ""; do
+    mountpoint -q "${MNT}/${m}" && umount -l "${MNT}/${m}"
+done
+losetup -d "$LOOPDEV"; LOOPDEV=""
+
+mv "${WORKDIR}/${RPIOS_IMG}" "${OUTDIR}/${OUTNAME}"
+xz -T0 -f "${OUTDIR}/${OUTNAME}"
+sha256sum "${OUTDIR}/${OUTNAME}.xz" > "${OUTDIR}/${OUTNAME}.xz.sha256"
+
+log "done"
+ls -lh "${OUTDIR}/${OUTNAME}.xz"
+cat "${OUTDIR}/${OUTNAME}.xz.sha256"
