@@ -259,11 +259,21 @@ fi
 if [ -n "$(ls "${MNT}"/etc/ssh/ssh_host_* 2>/dev/null)" ]; then
     echo "  SSH host keys present!"; problems=1
 fi
-if [ -e "${MNT}/etc/systemd/system/multi-user.target.wants/receive_messages.service" ]; then
+# -L, not -e. These are symlinks whose targets are absolute paths INSIDE the
+# image; tested from the host, -e resolves them against the host's root, finds
+# nothing, and reports the link as absent. That made the firstboot check reject
+# good images, and — far worse — made the receive_messages check unable to fail
+# at all, since a wrongly-enabled service would also read as absent.
+WANTS="${MNT}/etc/systemd/system/multi-user.target.wants"
+if [ -L "${WANTS}/receive_messages.service" ] || [ -e "${WANTS}/receive_messages.service" ]; then
     echo "  receive_messages.service is enabled — it must ship disabled!"; problems=1
 fi
-if [ ! -e "${MNT}/etc/systemd/system/multi-user.target.wants/pagalava-firstboot.service" ]; then
+if [ ! -L "${WANTS}/pagalava-firstboot.service" ] && [ ! -e "${WANTS}/pagalava-firstboot.service" ]; then
     echo "  pagalava-firstboot.service is NOT enabled — the image cannot provision itself!"; problems=1
+fi
+# The link must also point at a unit that actually exists in the image.
+if [ ! -f "${MNT}/etc/systemd/system/pagalava-firstboot.service" ]; then
+    echo "  pagalava-firstboot.service unit file is missing from the image!"; problems=1
 fi
 [ "$problems" -eq 0 ] || fail "image failed its own checks; not publishing"
 echo "  clean"
