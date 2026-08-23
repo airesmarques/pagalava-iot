@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 from azure.iot.device import IoTHubDeviceClient
 
 import relay_ops
+from minute_token import generate_minute_token
 from relay_ops import MachineNotConfiguredException  # Import the custom exception
 
 # Load environment variables from .env file.
@@ -100,6 +101,85 @@ def message_configure(config_data: dict):
     except Exception as e:
         logging.error("%s: Failed to save configuration - %s", func_name, e)
 
+CONFIG_FILE = "config.json"
+
+
+def config_is_missing() -> bool:
+    """
+    True when this device has no machine-to-relay map.
+
+    A Pi installed from the golden image starts out this way: config.json is
+    gitignored and never ships in the image, so until the cloud sends one every
+    activation raises MachineNotConfiguredException.
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    return not os.path.exists(os.path.join(script_dir, CONFIG_FILE))
+
+
+def request_configuration() -> bool:
+    """
+    Ask the backend to send this device its machine-to-relay configuration.
+
+    The configuration does not come back in the HTTP response — the backend
+    pushes it over IoT Hub as a normal 'configure' message, which
+    message_configure() then writes to config.json. This call only asks.
+
+    Safe to call more than once: the backend ignores repeat requests for the
+    same laundry within a minute and answers 429.
+
+    :return: True if the backend accepted the request.
+    """
+    func_name = "request_configuration"
+    env_info = determine_environment()
+    url = f"https://{env_info['url']}/api/laundries/iot/request_configuration"
+    payload = {
+        "device_id": DEVICE_ID,
+        "token": generate_minute_token(DEVICE_ID),
+    }
+
+    try:
+        response = requests.post(
+            url,
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=15,
+        )
+        if response.status_code in (200, 202):
+            logging.info("%s: Configuration requested successfully", func_name)
+            return True
+        if response.status_code == 429:
+            logging.info(
+                "%s: Configuration was already requested recently, waiting for it",
+                func_name,
+            )
+            return True
+        logging.error(
+            "%s: Backend refused the request - HTTP %s %s",
+            func_name, response.status_code, response.text[:200],
+        )
+        return False
+    except requests.exceptions.RequestException as e:
+        # Not fatal: the device keeps running and will ask again on the next
+        # activation that finds no configuration.
+        logging.error("%s: Could not reach the backend - %s", func_name, e)
+        return False
+
+
+def request_configuration_if_missing() -> None:
+    """Ask for configuration at startup, but only if this device has none."""
+    if config_is_missing():
+        logging.warning(
+            "request_configuration_if_missing: No %s on this device - requesting one",
+            CONFIG_FILE,
+        )
+        request_configuration()
+    else:
+        logging.info(
+            "request_configuration_if_missing: %s present, nothing to request",
+            CONFIG_FILE,
+        )
+
+
 def message_wake_up():
     func_name = "message_wake_up"
     logging.info("%s: Wake up signal received.", func_name)
@@ -149,7 +229,8 @@ def message_activate(json_data: dict):
                 machine_id=machine_id,
                 number_of_impulses=number_of_impulses
             )
-        elif VERSION.startswith("1.5") or VERSION.startswith("1.6"):
+        elif (VERSION.startswith("1.5") or VERSION.startswith("1.6")
+              or VERSION.startswith("1.7") or VERSION.startswith("1.8")):
             logging.info("%s: Using v1.5+ activation method (v1.2 relay + callback)", func_name)
             relay_ops.activate_machine_v1_2(
                 machine_id=machine_id,
@@ -168,6 +249,14 @@ def message_activate(json_data: dict):
         logging.error("%s: %s", func_name, e)
         activation_status = "FAILED"
         activation_error_code = "MACHINE_NOT_CONFIGURED"
+        # This is the device discovering it has no relay map, arriving by a
+        # different route than the startup check. Ask for one so the next
+        # activation can succeed: without this the device stays unable to
+        # activate anything until someone notices and presses a button in the
+        # dashboard, and nothing about the failure is visible from the cloud.
+        # This activation is still lost — asking cannot rescue it.
+        logging.info("%s: Requesting configuration so the next attempt can work", func_name)
+        request_configuration()
     except KeyError as e:
         logging.error("%s: Missing key in JSON data - %s", func_name, e)
         activation_status = "FAILED"
@@ -490,6 +579,10 @@ def main():
     
     # Initial backoff time in seconds
     backoff_time = 60
+
+    # Guards the startup configuration request so a reconnect loop does not
+    # repeat it; MachineNotConfiguredException is the recovery path instead.
+    requested_configuration = False
     max_backoff_time = 300  # 5 minutes
     
     while True:
@@ -517,6 +610,14 @@ def main():
             # The connect() call is implicit in the SDK, but we can add explicit connection handling
             
             logging.info("Connected successfully. Waiting for C2D messages. Press Ctrl-C to exit.")
+
+            # A device imaged from the golden image has no config.json and
+            # cannot activate anything until the cloud sends one. Ask now that
+            # the network is definitely up. Only once per process: the retry
+            # path is the activation handler below.
+            if not requested_configuration:
+                request_configuration_if_missing()
+                requested_configuration = True
             
             # Keep the script running to listen for messages
             while True:
