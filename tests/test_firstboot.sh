@@ -109,8 +109,19 @@ test_happy_path() {
     # exact form so it cannot be dropped as noise.
     check "happy path restarts the service without blocking" \
         "$(grep -c '^restart --no-block receive_messages.service$' "$SYSTEMCTL_LOG")" "1"
-    check "happy path locks down .env" \
-        "$(stat -c '%a' "${WORKDIR}/.env")" "600"
+    # -L follows the symlink: a symlink's own mode is always 777, the mode
+    # that matters is the target's.
+    check "happy path locks down the env file" \
+        "$(stat -Lc '%a' "${WORKDIR}/.env")" "600"
+    # configurar.py lists selectable environments by globbing .env.<suffix>
+    # and switches by repointing the .env symlink. A plain .env with no
+    # siblings leaves a device it cannot manage.
+    check "happy path names the environment file" \
+        "$([ -f "${WORKDIR}/.env.dev" ] && echo yes || echo no)" "yes"
+    check "happy path points .env at it as a symlink" \
+        "$(readlink "${WORKDIR}/.env")" ".env.dev"
+    check "happy path derives the environment from the connection string" \
+        "$(grep -c 'IoTHub-dev' "${WORKDIR}/.env.dev")" "1"
     check "happy path sets the SSH password" \
         "$(cat "$CHPASSWD_LOG")" "pagalava:${PASSWORD}"
     check "happy path enables ssh" \
@@ -156,7 +167,7 @@ test_no_file_is_a_silent_success() {
 
 test_existing_env_is_not_clobbered_silently() {
     setup
-    printf 'IOT_CONNECTION_STRING="OLD"\n' > "${WORKDIR}/.env"
+    printf 'IOT_CONNECTION_STRING="OLD"\n' > "${WORKDIR}/.env"   # legacy plain file
     printf 'IOT_CONNECTION_STRING="%s"\n' "$CONN" \
         > "${BOOTDIR}/pagalava-provisioning-laundry-129.txt"
 
@@ -165,9 +176,13 @@ test_existing_env_is_not_clobbered_silently() {
     check "re-provision overwrites .env" \
         "$(cat "${WORKDIR}/.env")" "IOT_CONNECTION_STRING=\"${CONN}\""
     check "re-provision keeps a backup" \
-        "$(cat "${WORKDIR}/.env.previous")" 'IOT_CONNECTION_STRING="OLD"'
+        "$(cat "${WORKDIR}/.env.bak")" 'IOT_CONNECTION_STRING="OLD"'
+    # .env.previous would be a SELECTABLE environment in configurar.py, still
+    # holding the previous laundry's credential. .env.bak is ignored.
+    check "re-provision backup cannot be selected as an environment" \
+        "$([ -e "${WORKDIR}/.env.previous" ] && echo leaked || echo no)" "no"
     check "re-provision warns in the log" \
-        "$(grep -c 'will be overwritten' "${SANDBOX}/out.log")" "1"
+        "$(grep -c 'will be repointed' "${SANDBOX}/out.log")" "1"
     teardown
 }
 

@@ -99,27 +99,52 @@ main() {
         exit 1
     fi
 
-    if [ -f "$ENVFILE" ]; then
+    if [ -e "$ENVFILE" ] || [ -L "$ENVFILE" ]; then
         # Re-provisioning: dropping a new file on an already-configured device
         # moves it to another laundry. That is the useful behaviour, but it is
         # worth a loud log line because it changes the device's identity.
-        log "WARNING: ${ENVFILE} already exists and will be overwritten"
-        cp -p "$ENVFILE" "${ENVFILE}.previous" 2>/dev/null || true
+        #
+        # The backup MUST be .env.bak. configurar.py ignores exactly
+        # {bak,tmp,sample,example}; anything else — .env.previous, say —
+        # becomes a SELECTABLE environment still holding the previous
+        # laundry's connection string, and switching to it would make this
+        # device impersonate that laundry.
+        log "WARNING: ${ENVFILE} already exists and will be repointed"
+        cp -pL "$ENVFILE" "${WORKINGDIR}/.env.bak" 2>/dev/null || true
     fi
 
-    # Extract ONLY the connection string into .env. This used to copy the whole
-    # file, which was fine when the connection string was all it held — but the
-    # file now also carries the SSH password, and a wholesale copy would put
-    # that into the messaging service's environment for no reason.
-    # -f2- because the connection string itself contains '=' characters.
+    # Extract ONLY the connection string. The provisioning file is a transport
+    # format, not an env file: it also carries the SSH password, and .env is
+    # loaded into the messaging service's environment (load_dotenv), where a
+    # password has no business being.
     conn_line="$(grep -m1 '^IOT_CONNECTION_STRING=' "$provfile")"
-    if ! printf '%s\n' "$conn_line" > "$ENVFILE"; then
-        log "ERROR: could not write ${ENVFILE}"
+
+    # Write it as .env.<environment> with .env symlinked to it, which is the
+    # shape configurar.py manages: it lists selectable environments by globbing
+    # .env.<suffix> and switches by repointing the .env symlink. A plain .env
+    # with no siblings leaves the device with nothing to switch between —
+    # exactly the limitation docs/configurar-bootstrap-migration.md describes
+    # for legacy devices, which this flow should not be recreating.
+    #
+    # The name matches determine_environment() in ReceiveMessages.py, which
+    # keys on "IoTHub-dev" in the hostname.
+    case "$conn_line" in
+        *IoTHub-dev*) env_name="dev" ;;
+        *)            env_name="prod" ;;
+    esac
+    env_target="${WORKINGDIR}/.env.${env_name}"
+
+    if ! printf '%s\n' "$conn_line" > "$env_target"; then
+        log "ERROR: could not write ${env_target}"
         exit 1
     fi
-    chown "${PAGALAVA_USER}:${PAGALAVA_USER}" "$ENVFILE" || true
-    chmod 600 "$ENVFILE"
-    log "wrote ${ENVFILE} (mode 600, owner ${PAGALAVA_USER})"
+    chown "${PAGALAVA_USER}:${PAGALAVA_USER}" "$env_target" || true
+    chmod 600 "$env_target"
+
+    # Relative target, so the symlink survives the directory being moved.
+    ln -sfn ".env.${env_name}" "$ENVFILE"
+    chown -h "${PAGALAVA_USER}:${PAGALAVA_USER}" "$ENVFILE" 2>/dev/null || true
+    log "wrote ${env_target} (mode 600) and pointed .env at it"
 
     # Set the device's SSH password, if the dashboard supplied one.
     #

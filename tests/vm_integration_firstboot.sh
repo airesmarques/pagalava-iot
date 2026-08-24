@@ -208,6 +208,14 @@ print('match' if crypt.crypt(sys.argv[2], h) == h else 'MISMATCH')
         "$(grep -c 'PAGALAVA_PASSWORD' ${WORKINGDIR}/.env 2>/dev/null | head -1)" "0"
     check ".env still has the connection string" \
         "$(cat ${WORKINGDIR}/.env 2>/dev/null)" "IOT_CONNECTION_STRING=\"${CONN_A}\""
+    # configurar.py manages environments by globbing .env.<suffix> and
+    # repointing the .env symlink. A zero-touch device must end up in that
+    # shape, or it is unmanageable in exactly the way the bootstrap-migration
+    # doc describes for legacy devices.
+    check "device is manageable by configurar.py" \
+        "$(readlink ${WORKINGDIR}/.env)" ".env.dev"
+    check "the environment file exists with the right mode" \
+        "$(stat -Lc '%a' ${WORKINGDIR}/.env)" "600"
 
     # And the credential must be gone from the card.
     check "provisioning file removed from the boot partition" \
@@ -233,7 +241,9 @@ test_fresh_image_provisions_itself() {
         "$(systemctl show -p Result --value pagalava-firstboot.service)" "success"
     check ".env was written" \
         "$(cat ${WORKINGDIR}/.env 2>/dev/null)" "IOT_CONNECTION_STRING=\"${CONN_A}\""
-    check ".env is mode 600" "$(stat -c '%a' ${WORKINGDIR}/.env)" "600"
+    # -L follows the symlink: .env points at .env.<environment>, and a
+    # symlink's own mode is always 777.
+    check ".env is mode 600" "$(stat -Lc '%a' ${WORKINGDIR}/.env)" "600"
     check ".env is owned by pagalava" "$(stat -c '%U' ${WORKINGDIR}/.env)" "pagalava"
     check "provisioning file was removed from the card" \
         "$(ls ${BOOTDIR}/pagalava-provisioning*.txt 2>/dev/null | wc -l)" "0"
@@ -315,7 +325,12 @@ test_reprovision_switches_laundry() {
     check "second provisioning replaced .env" \
         "$(cat ${WORKINGDIR}/.env 2>/dev/null)" "IOT_CONNECTION_STRING=\"${CONN_B}\""
     check "previous .env was kept as a backup" \
-        "$(cat ${WORKINGDIR}/.env.previous 2>/dev/null)" "IOT_CONNECTION_STRING=\"${CONN_A}\""
+        "$(cat ${WORKINGDIR}/.env.bak 2>/dev/null)" "IOT_CONNECTION_STRING=\"${CONN_A}\""
+    # .env.previous would show up in configurar.py as a selectable environment
+    # still holding laundry 129's credential; switching to it would make this
+    # device impersonate that laundry.
+    check "the backup is not offered as a selectable environment" \
+        "$([ -e ${WORKINGDIR}/.env.previous ] && echo leaked || echo no)" "no"
     check "device now reports the new identity" \
         "$(cat /tmp/pagalava-device-identity 2>/dev/null)" "$CONN_B"
 }
