@@ -14,6 +14,7 @@ set -u
 
 SCRIPT_UNDER_TEST="$(cd "$(dirname "$0")/.." && pwd)/firstboot.sh"
 CONN='HostName=IoTHub-dev.azure-devices.net;DeviceId=rpiPagalava129;SharedAccessKey=abc123='
+PASSWORD='lavar-vento-porta-mesa-47'
 
 PASS=0
 FAIL=0
@@ -40,6 +41,16 @@ exit 0
 STUB
     chmod +x "${SANDBOX}/bin/chown"
 
+    # chpasswd needs root; record the call instead so the script's own logic
+    # is what gets tested, not our lack of privileges.
+    cat > "${SANDBOX}/bin/chpasswd" <<'STUB'
+#!/bin/bash
+cat >> "${CHPASSWD_LOG}"
+STUB
+    chmod +x "${SANDBOX}/bin/chpasswd"
+
+    export CHPASSWD_LOG="${SANDBOX}/chpasswd.log"
+    : > "$CHPASSWD_LOG"
     export SYSTEMCTL_LOG="${SANDBOX}/systemctl.log"
     : > "$SYSTEMCTL_LOG"
 }
@@ -54,7 +65,8 @@ run_firstboot() {
         -e "s#^WORKINGDIR=.*#WORKINGDIR=\"${WORKDIR}\"#" \
         "$SCRIPT_UNDER_TEST" > "${SANDBOX}/firstboot.sh"
     chmod +x "${SANDBOX}/firstboot.sh"
-    PATH="${SANDBOX}/bin:${PATH}" bash "${SANDBOX}/firstboot.sh" > "${SANDBOX}/out.log" 2>&1
+    PATH="${SANDBOX}/bin:${PATH}" CHPASSWD_LOG="$CHPASSWD_LOG" \
+        bash "${SANDBOX}/firstboot.sh" > "${SANDBOX}/out.log" 2>&1
     echo $?
 }
 
@@ -75,7 +87,7 @@ check() {
 
 test_happy_path() {
     setup
-    printf 'IOT_CONNECTION_STRING="%s"\n' "$CONN" \
+    printf 'IOT_CONNECTION_STRING="%s"\nPAGALAVA_PASSWORD="%s"\n' "$CONN" "$PASSWORD" \
         > "${BOOTDIR}/pagalava-provisioning-laundry-129.txt"
 
     local rc; rc="$(run_firstboot)"
@@ -83,6 +95,11 @@ test_happy_path() {
     check "happy path writes .env" \
         "$(cat "${WORKDIR}/.env" 2>/dev/null)" \
         "IOT_CONNECTION_STRING=\"${CONN}\""
+    # .env feeds the messaging service's environment. The SSH password has no
+    # business being there, and a wholesale copy of the provisioning file --
+    # which is what this used to do -- would have put it there.
+    check "happy path keeps the password OUT of .env" \
+        "$(grep -c 'PAGALAVA_PASSWORD' "${WORKDIR}/.env" 2>/dev/null | head -1)" "0"
     check "happy path removes the file from the card" \
         "$(ls "${BOOTDIR}"/pagalava-provisioning*.txt 2>/dev/null | wc -l)" "0"
     check "happy path enables the service" \
@@ -94,6 +111,31 @@ test_happy_path() {
         "$(grep -c '^restart --no-block receive_messages.service$' "$SYSTEMCTL_LOG")" "1"
     check "happy path locks down .env" \
         "$(stat -c '%a' "${WORKDIR}/.env")" "600"
+    check "happy path sets the SSH password" \
+        "$(cat "$CHPASSWD_LOG")" "pagalava:${PASSWORD}"
+    check "happy path enables ssh" \
+        "$(grep -c '^enable ssh$' "$SYSTEMCTL_LOG")" "1"
+    teardown
+}
+
+test_no_password_leaves_ssh_alone() {
+    # A device provisioned by an older dashboard, before passwords existed.
+    # It must still come up and work; it just has no shell access.
+    setup
+    printf 'IOT_CONNECTION_STRING="%s"\n' "$CONN" \
+        > "${BOOTDIR}/pagalava-provisioning-laundry-129.txt"
+
+    local rc; rc="$(run_firstboot)"
+    check "no-password file still provisions" "$rc" "0"
+    check "no-password file still writes .env" \
+        "$(cat "${WORKDIR}/.env" 2>/dev/null)" \
+        "IOT_CONNECTION_STRING=\"${CONN}\""
+    check "no-password file sets no password" \
+        "$(wc -c < "$CHPASSWD_LOG")" "0"
+    check "no-password file does not enable ssh" \
+        "$(grep -c '^enable ssh$' "$SYSTEMCTL_LOG")" "0"
+    check "no-password file still starts the messaging service" \
+        "$(grep -c '^enable receive_messages.service$' "$SYSTEMCTL_LOG")" "1"
     teardown
 }
 
@@ -194,6 +236,7 @@ test_missing_workdir_fails_loudly() {
 }
 
 test_happy_path
+test_no_password_leaves_ssh_alone
 test_no_file_is_a_silent_success
 test_existing_env_is_not_clobbered_silently
 test_two_files_refuses_to_guess

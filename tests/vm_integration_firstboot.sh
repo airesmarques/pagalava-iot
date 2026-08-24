@@ -18,6 +18,7 @@ REPO="${1:?usage: $0 <path-to-firmware-repo>}"
 WORKINGDIR="/home/pagalava/pagalava-iot"
 BOOTDIR="/boot/firmware"
 CONN_A='HostName=IoTHub-dev.azure-devices.net;DeviceId=rpiPagalava129;SharedAccessKey=AAAA=='
+PASSWORD='lavar-vento-porta-mesa-47'
 CONN_B='HostName=IoTHub-dev.azure-devices.net;DeviceId=rpiPagalava777;SharedAccessKey=BBBB=='
 
 PASS=0; FAIL=0
@@ -165,6 +166,54 @@ test_legacy_device_survives_upgrade() {
 # ---------------------------------------------------------------------------
 # 2. A golden image booting with a provisioning file.
 # ---------------------------------------------------------------------------
+test_ssh_password_is_actually_usable() {
+    # The unit tests stub chpasswd, so they prove the script CALLS it, not that
+    # the account ends up usable. This is the difference between "we ran the
+    # command" and "the installer can log in", which is the whole point.
+    banner "the SSH password actually works"
+    reset_world
+    install_image_unit
+    simulate_git_upgrade
+    systemctl enable pagalava-firstboot.service >/dev/null 2>&1
+
+    printf 'IOT_CONNECTION_STRING="%s"\nPAGALAVA_PASSWORD="%s"\n' "$CONN_A" "$PASSWORD" \
+        > "${BOOTDIR}/pagalava-provisioning-laundry-129.txt"
+    systemctl start pagalava-firstboot.service
+    sleep 4
+
+    check "firstboot succeeded" \
+        "$(systemctl show -p Result --value pagalava-firstboot.service)" "success"
+
+    # The account must be unlocked and carry a real hash. A locked account
+    # shows '!' or '*' in place of one, which is what useradd leaves behind.
+    local hash
+    hash="$(getent shadow pagalava | cut -d: -f2)"
+    check "account is no longer locked" \
+        "$(case "$hash" in ""|"!"*|"*"*) echo locked;; *) echo unlocked;; esac)" "unlocked"
+
+    # Verify the stored hash genuinely matches the password we supplied,
+    # rather than trusting that chpasswd was handed the right string.
+    check "the stored hash matches the supplied password" \
+        "$(python3 -c "
+import crypt, sys
+h = sys.argv[1]
+print('match' if crypt.crypt(sys.argv[2], h) == h else 'MISMATCH')
+" "$hash" "$PASSWORD" 2>/dev/null || echo 'could-not-check')" "match"
+
+    check "ssh is enabled" \
+        "$(systemctl is-enabled ssh 2>&1)" "enabled"
+
+    # .env feeds the messaging service. The password has no business there.
+    check "the password is NOT in .env" \
+        "$(grep -c 'PAGALAVA_PASSWORD' ${WORKINGDIR}/.env 2>/dev/null | head -1)" "0"
+    check ".env still has the connection string" \
+        "$(cat ${WORKINGDIR}/.env 2>/dev/null)" "IOT_CONNECTION_STRING=\"${CONN_A}\""
+
+    # And the credential must be gone from the card.
+    check "provisioning file removed from the boot partition" \
+        "$(ls ${BOOTDIR}/pagalava-provisioning*.txt 2>/dev/null | wc -l)" "0"
+}
+
 test_fresh_image_provisions_itself() {
     banner "fresh image provisions itself from the boot partition"
     reset_world
@@ -272,6 +321,7 @@ test_reprovision_switches_laundry() {
 }
 
 test_legacy_device_survives_upgrade
+test_ssh_password_is_actually_usable
 test_fresh_image_provisions_itself
 test_fresh_image_without_file_sits_idle
 test_ordering_is_declared

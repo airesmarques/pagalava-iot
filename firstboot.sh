@@ -107,15 +107,47 @@ main() {
         cp -p "$ENVFILE" "${ENVFILE}.previous" 2>/dev/null || true
     fi
 
-    # The provisioning file is already in .env format (KEY="value"), the same
-    # line setup_pagalava_iot.sh writes, so this is a copy and not a parse.
-    if ! cp "$provfile" "$ENVFILE"; then
+    # Extract ONLY the connection string into .env. This used to copy the whole
+    # file, which was fine when the connection string was all it held — but the
+    # file now also carries the SSH password, and a wholesale copy would put
+    # that into the messaging service's environment for no reason.
+    # -f2- because the connection string itself contains '=' characters.
+    conn_line="$(grep -m1 '^IOT_CONNECTION_STRING=' "$provfile")"
+    if ! printf '%s\n' "$conn_line" > "$ENVFILE"; then
         log "ERROR: could not write ${ENVFILE}"
         exit 1
     fi
     chown "${PAGALAVA_USER}:${PAGALAVA_USER}" "$ENVFILE" || true
     chmod 600 "$ENVFILE"
     log "wrote ${ENVFILE} (mode 600, owner ${PAGALAVA_USER})"
+
+    # Set the device's SSH password, if the dashboard supplied one.
+    #
+    # The image is a public download, so it can ship no credential of its own:
+    # every device gets a unique password delivered here instead. Without this
+    # the pagalava account stays locked and nobody can run test.sh to check the
+    # relay wiring, which is a required install step.
+    #
+    # A file with no password is left exactly as it is — a device provisioned
+    # by an older dashboard must not silently gain or lose access.
+    password="$(grep -m1 '^PAGALAVA_PASSWORD=' "$provfile" | cut -d= -f2- | tr -d '"')"
+    if [ -n "$password" ]; then
+        if printf '%s:%s\n' "$PAGALAVA_USER" "$password" | chpasswd; then
+            log "set the SSH password for ${PAGALAVA_USER}"
+            # ssh is present but not enabled in the image, so that a device
+            # provisioned without a password has no listening port at all.
+            systemctl enable ssh >/dev/null 2>&1 || true
+            systemctl start --no-block ssh >/dev/null 2>&1 || true
+            log "enabled ssh"
+        else
+            # Not fatal: the device should still come up and activate machines
+            # even if it ends up unreachable by shell.
+            log "WARNING: could not set the password for ${PAGALAVA_USER}"
+        fi
+    else
+        log "no PAGALAVA_PASSWORD in the provisioning file, leaving SSH untouched"
+    fi
+    unset password
 
     # Remove the credential from the card. Note this is an ordinary unlink on a
     # FAT partition: it unlinks, it does not wipe. A card that was imaged before
