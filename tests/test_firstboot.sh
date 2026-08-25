@@ -49,6 +49,15 @@ cat >> "${CHPASSWD_LOG}"
 STUB
     chmod +x "${SANDBOX}/bin/chpasswd"
 
+    # hostnamectl would rename the machine running the tests.
+    cat > "${SANDBOX}/bin/hostnamectl" <<'STUB'
+#!/bin/bash
+echo "$@" >> "${HOSTNAMECTL_LOG}"
+STUB
+    chmod +x "${SANDBOX}/bin/hostnamectl"
+    export HOSTNAMECTL_LOG="${SANDBOX}/hostnamectl.log"
+    : > "$HOSTNAMECTL_LOG"
+
     export CHPASSWD_LOG="${SANDBOX}/chpasswd.log"
     : > "$CHPASSWD_LOG"
     export SYSTEMCTL_LOG="${SANDBOX}/systemctl.log"
@@ -66,6 +75,7 @@ run_firstboot() {
         "$SCRIPT_UNDER_TEST" > "${SANDBOX}/firstboot.sh"
     chmod +x "${SANDBOX}/firstboot.sh"
     PATH="${SANDBOX}/bin:${PATH}" CHPASSWD_LOG="$CHPASSWD_LOG" \
+        HOSTNAMECTL_LOG="$HOSTNAMECTL_LOG" \
         bash "${SANDBOX}/firstboot.sh" > "${SANDBOX}/out.log" 2>&1
     echo $?
 }
@@ -126,6 +136,10 @@ test_happy_path() {
         "$(cat "$CHPASSWD_LOG")" "pagalava:${PASSWORD}"
     check "happy path enables ssh" \
         "$(grep -c '^enable ssh$' "$SYSTEMCTL_LOG")" "1"
+    # Without a per-device hostname every device answers to raspberrypi.local:
+    # two on a bench collide, and the dashboard's IP goes stale on a new lease.
+    check "happy path names the device after its laundry" \
+        "$(cat "$HOSTNAMECTL_LOG")" "set-hostname pagalava-129"
     teardown
 }
 

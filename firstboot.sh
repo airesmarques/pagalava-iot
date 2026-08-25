@@ -146,6 +146,32 @@ main() {
     chown -h "${PAGALAVA_USER}:${PAGALAVA_USER}" "$ENVFILE" 2>/dev/null || true
     log "wrote ${env_target} (mode 600) and pointed .env at it"
 
+    # Give the device a stable name derived from its laundry, so it can be
+    # reached as e.g. pagalava-99.local regardless of what DHCP hands out.
+    # Without this every device is "raspberrypi": the address in the dashboard
+    # goes stale whenever the lease changes, and two devices on the same bench
+    # collide on mDNS. avahi-daemon is enabled in the image, so the .local name
+    # works with no further setup.
+    device_id="$(printf '%s' "$conn_line" | sed -n 's/.*DeviceId=\([^;"]*\).*/\1/p')"
+    laundry_num="$(printf '%s' "$device_id" | sed -n 's/^rpiPagalava\([0-9]\+\)$/\1/p')"
+    if [ -n "$laundry_num" ]; then
+        new_host="pagalava-${laundry_num}"
+        if command -v hostnamectl >/dev/null 2>&1; then
+            hostnamectl set-hostname "$new_host" 2>/dev/null || true
+        else
+            printf '%s\n' "$new_host" > /etc/hostname 2>/dev/null || true
+        fi
+        # 127.0.1.1 must track the hostname or sudo warns and name lookups stall.
+        if grep -q '^127\.0\.1\.1' /etc/hosts 2>/dev/null; then
+            sed -i "s/^127\.0\.1\.1.*/127.0.1.1\t${new_host}/" /etc/hosts
+        else
+            printf '127.0.1.1\t%s\n' "$new_host" >> /etc/hosts
+        fi
+        log "hostname set to ${new_host} (reachable as ${new_host}.local)"
+    else
+        log "could not derive a hostname from device id '${device_id}', leaving it alone"
+    fi
+
     # Set the device's SSH password, if the dashboard supplied one.
     #
     # The image is a public download, so it can ship no credential of its own:
