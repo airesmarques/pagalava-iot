@@ -161,11 +161,15 @@ main() {
     valid_host="$(printf '%s' "$device_id" | sed -n 's/^\([A-Za-z0-9-]\{1,63\}\)$/\1/p')"
     if [ -n "$valid_host" ]; then
         new_host="$valid_host"
-        if command -v hostnamectl >/dev/null 2>&1; then
-            hostnamectl set-hostname "$new_host" 2>/dev/null || true
-        else
-            printf '%s\n' "$new_host" > /etc/hostname 2>/dev/null || true
-        fi
+        # Deliberately NOT hostnamectl. It talks to systemd-hostnamed over
+        # D-Bus, and this unit runs After=local-fs.target — early enough that
+        # D-Bus may not be up. hostnamectl then BLOCKS rather than failing, and
+        # because receive_messages.service is ordered behind this unit, a hang
+        # here stalls the whole boot: no messaging service, no SSH, nothing.
+        # Writing the file and calling the hostname syscall needs no D-Bus.
+        # timeout is belt and braces: nothing in first boot may hang forever.
+        printf '%s\n' "$new_host" > /etc/hostname 2>/dev/null || true
+        timeout 5 hostname "$new_host" 2>/dev/null || true
         # 127.0.1.1 must track the hostname or sudo warns and name lookups stall.
         if grep -q '^127\.0\.1\.1' /etc/hosts 2>/dev/null; then
             sed -i "s/^127\.0\.1\.1.*/127.0.1.1\t${new_host}/" /etc/hosts

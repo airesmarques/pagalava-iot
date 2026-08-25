@@ -139,7 +139,15 @@ test_happy_path() {
     # Without a per-device hostname every device answers to raspberrypi.local:
     # two on a bench collide, and the dashboard's IP goes stale on a new lease.
     check "happy path names the device after its IoT device id" \
-        "$(cat "$HOSTNAMECTL_LOG")" "set-hostname rpiPagalava129"
+        "$(grep -c 'hostname set to rpiPagalava129' "${SANDBOX}/out.log")" "1"
+    # hostnamectl blocks on D-Bus, which is not necessarily up this early in
+    # boot. Because receive_messages.service is ordered behind this unit, a
+    # hang there stalls the entire boot — no messaging service, no SSH, and a
+    # provisioning file left unconsumed on the card. The stub used to return
+    # instantly, which hid exactly that. Count real calls, not the comment
+    # explaining why we avoid them.
+    check "first boot never calls hostnamectl" \
+        "$(grep -vE '^\s*#' "${SANDBOX}/firstboot.sh" | grep -c hostnamectl)" "0"
     teardown
 }
 
