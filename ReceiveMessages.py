@@ -180,6 +180,74 @@ def request_configuration_if_missing() -> None:
         )
 
 
+def message_test_relay(json_data: dict):
+    """
+    Click relays directly, for bench-testing a freshly assembled board.
+
+    This is the only path that addresses relays rather than machines. Every
+    other activation goes through config.json, which maps machine -> relay; a
+    board being assembled has no machines yet, and the installer needs to check
+    all sixteen relays regardless of how many machines will eventually use
+    them.
+
+    relay_to_gpio_map lives in relay_ops, so this works on a device whose
+    configuration has never been sent.
+
+    Accepts either:
+        {"msg_type": "test_relay", "relay_number": 9}
+        {"msg_type": "test_relay", "module": "1" | "2" | "all"}
+
+    Optional "duration_s" shortens or lengthens each click. The default is
+    deliberately shorter than a real activation, so a connected machine is not
+    started by a wiring check.
+    """
+    func_name = "message_test_relay"
+
+    duration = json_data.get("duration_s", 1.0)
+    try:
+        duration = float(duration)
+    except (TypeError, ValueError):
+        duration = 1.0
+    # Bounded: a stuck-closed relay energises whatever is wired to it.
+    duration = max(0.1, min(duration, 3.0))
+
+    relay_number = json_data.get("relay_number")
+    module = json_data.get("module")
+
+    try:
+        if relay_number is not None:
+            relay_number = int(relay_number)
+            logging.info("%s: pulsing relay %s for %ss", func_name, relay_number, duration)
+            relay_ops.pulse_relay(relay_number, duration)
+            logging.info("%s: relay %s done", func_name, relay_number)
+            return
+
+        if module is not None:
+            module = str(module).lower()
+            if module == "1":
+                relays = relay_ops.MODULE_1_RELAYS
+            elif module == "2":
+                relays = relay_ops.MODULE_2_RELAYS
+            elif module in ("all", "ma", "todos"):
+                relays = list(relay_ops.relay_to_gpio_map)
+            else:
+                logging.error("%s: unknown module %r", func_name, module)
+                return
+            logging.info("%s: pulsing module %s (%s relays)", func_name, module, len(relays))
+            done = relay_ops.pulse_relays(relays, duration)
+            logging.info("%s: pulsed relays %s", func_name, done)
+            return
+
+        logging.error("%s: neither relay_number nor module given", func_name)
+    except KeyError as e:
+        logging.error("%s: %s", func_name, e)
+    #pylint: disable=broad-except
+    except Exception as e:
+        # Never let a wiring test kill the messaging loop.
+        logging.error("%s: unexpected error - %s", func_name, e)
+    #pylint: enable=broad-except
+
+
 def message_wake_up():
     func_name = "message_wake_up"
     logging.info("%s: Wake up signal received.", func_name)
@@ -553,6 +621,8 @@ def message_handler(message):
         message_upgrade()
     elif msg_type == 'get_version':
         message_version(json_data)
+    elif msg_type == 'test_relay':
+        message_test_relay(json_data)
     elif msg_type == 'diagnostic':
         message_diagnostic(json_data)
     else:
