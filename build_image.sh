@@ -142,6 +142,32 @@ apt-get -y install git python3 python3-venv python3-pip python3-dev build-essent
 # SPI is needed by the relay boards.
 raspi-config nonint do_spi 0 || true
 
+# Raspberry Pi OS soft-blocks the WiFi radio until a regulatory country is
+# set — rfkill reports "Soft blocked: yes" and nmcli cannot connect at all.
+# Setting a country is a regulatory requirement, not a Pi quirk. PT because
+# that is where these devices are installed; change it here if that changes.
+# Ethernet is unaffected either way.
+raspi-config nonint do_wifi_country PT || true
+
+# Pi OS's first-user wizard. It is still armed on a stock image and does not
+# recognise the pagalava user we created above, so it prints "SSH may not work
+# until a valid user has been set up" on every login and can launch a setup
+# wizard on an attached console. We have a user; disable it.
+systemctl disable userconfig.service 2>/dev/null || true
+rm -f /etc/systemd/system/multi-user.target.wants/userconfig.service
+# The same package also gates a getty override for the wizard.
+rm -f /etc/systemd/system/getty@tty1.service.d/autologin.conf 2>/dev/null || true
+
+# Keep the journal across reboots. The first-boot log is the one thing that
+# explains a failed install, and on a volatile journal it is gone the moment
+# anyone reboots to try again — which is exactly what an installer does.
+mkdir -p /var/log/journal
+systemd-tmpfiles --create --prefix /var/log/journal 2>/dev/null || true
+sed -i 's/^#\?Storage=.*/Storage=persistent/' /etc/systemd/journald.conf
+# Bounded so logs cannot fill a small card.
+grep -q '^SystemMaxUse=' /etc/systemd/journald.conf \
+  || echo 'SystemMaxUse=100M' >> /etc/systemd/journald.conf
+
 if [ -d /tmp/pagalava-src ]; then
     # Seeded from LOCAL_REPO by the host before the chroot ran.
     mkdir -p ${WORKINGDIR}
@@ -293,6 +319,15 @@ if [ ! -L "${WANTS}/pagalava-firstboot.service" ] && [ ! -e "${WANTS}/pagalava-f
     echo "  pagalava-firstboot.service is NOT enabled — the image cannot provision itself!"; problems=1
 fi
 # The link must also point at a unit that actually exists in the image.
+if [ "$(chroot "$MNT" raspi-config nonint get_wifi_country 2>/dev/null)" != "PT" ]; then
+    echo "  WiFi country is not set — the radio stays rfkill-blocked!"; problems=1
+fi
+if [ -e "${MNT}/etc/systemd/system/multi-user.target.wants/userconfig.service" ]; then
+    echo "  userconfig.service is still enabled — it will nag on every login!"; problems=1
+fi
+if [ ! -d "${MNT}/var/log/journal" ]; then
+    echo "  journal is not persistent — first-boot logs will be lost on reboot!"; problems=1
+fi
 if [ -f "${MNT}/etc/sudoers.d/pagalava-restart" ]; then
     # A broken sudoers file is worse than none: it can lock everyone out of
     # sudo on the device.
