@@ -138,8 +138,8 @@ test_happy_path() {
         "$(grep -c '^enable ssh$' "$SYSTEMCTL_LOG")" "1"
     # Without a per-device hostname every device answers to raspberrypi.local:
     # two on a bench collide, and the dashboard's IP goes stale on a new lease.
-    check "happy path names the device after its laundry" \
-        "$(cat "$HOSTNAMECTL_LOG")" "set-hostname pagalava-129"
+    check "happy path names the device after its IoT device id" \
+        "$(cat "$HOSTNAMECTL_LOG")" "set-hostname rpiPagalava129"
     teardown
 }
 

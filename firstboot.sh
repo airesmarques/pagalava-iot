@@ -152,10 +152,15 @@ main() {
     # goes stale whenever the lease changes, and two devices on the same bench
     # collide on mDNS. avahi-daemon is enabled in the image, so the .local name
     # works with no further setup.
+    # The hostname IS the IoT device id, so a device called rpiPagalava99 in
+    # the dashboard answers to rpiPagalava99.local on the network. One name to
+    # correlate, rather than two conventions to remember. mDNS is
+    # case-insensitive, so the capital P costs nothing.
     device_id="$(printf '%s' "$conn_line" | sed -n 's/.*DeviceId=\([^;"]*\).*/\1/p')"
-    laundry_num="$(printf '%s' "$device_id" | sed -n 's/^rpiPagalava\([0-9]\+\)$/\1/p')"
-    if [ -n "$laundry_num" ]; then
-        new_host="pagalava-${laundry_num}"
+    # Only accept a name that is valid as a hostname: letters, digits, hyphens.
+    valid_host="$(printf '%s' "$device_id" | sed -n 's/^\([A-Za-z0-9-]\{1,63\}\)$/\1/p')"
+    if [ -n "$valid_host" ]; then
+        new_host="$valid_host"
         if command -v hostnamectl >/dev/null 2>&1; then
             hostnamectl set-hostname "$new_host" 2>/dev/null || true
         else
@@ -169,7 +174,7 @@ main() {
         fi
         log "hostname set to ${new_host} (reachable as ${new_host}.local)"
     else
-        log "could not derive a hostname from device id '${device_id}', leaving it alone"
+        log "device id '${device_id}' is not a valid hostname, leaving the hostname alone"
     fi
 
     # Set the device's SSH password, if the dashboard supplied one.
