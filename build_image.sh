@@ -185,6 +185,27 @@ UNIT
 chmod 755 ${WORKINGDIR}/firstboot.sh
 install -m 644 ${WORKINGDIR}/pagalava-firstboot.service /etc/systemd/system/pagalava-firstboot.service
 
+# Let the service restart itself after an upgrade, and nothing else.
+#
+# message_upgrade() pulls new code then restarts the unit so it takes effect.
+# That needs root, and the service does not run as root; sudo from a service
+# has no tty, so without this the restart fails silently and the device keeps
+# running the old code until someone reboots it.
+#
+# Deliberately ONE command, not blanket NOPASSWD. Validated before being put
+# in place: a malformed file in /etc/sudoers.d breaks sudo for every user.
+cat > /tmp/pagalava-restart <<SUDOERS
+${PAGALAVA_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl restart receive_messages.service
+SUDOERS
+if visudo -c -f /tmp/pagalava-restart >/dev/null 2>&1; then
+    install -m 440 -o root -g root /tmp/pagalava-restart /etc/sudoers.d/pagalava-restart
+    echo "installed /etc/sudoers.d/pagalava-restart"
+else
+    echo "WARNING: generated sudoers rule failed validation; skipping it." >&2
+    echo "         Upgrades will need a reboot to take effect." >&2
+fi
+rm -f /tmp/pagalava-restart
+
 # First boot is enabled; the messaging service is NOT. An image booted without a
 # provisioning file must sit idle rather than crash-loop on a missing
 # connection string — firstboot.sh is what enables it once there is one.
@@ -272,6 +293,16 @@ if [ ! -L "${WANTS}/pagalava-firstboot.service" ] && [ ! -e "${WANTS}/pagalava-f
     echo "  pagalava-firstboot.service is NOT enabled — the image cannot provision itself!"; problems=1
 fi
 # The link must also point at a unit that actually exists in the image.
+if [ -f "${MNT}/etc/sudoers.d/pagalava-restart" ]; then
+    # A broken sudoers file is worse than none: it can lock everyone out of
+    # sudo on the device.
+    if ! chroot "$MNT" visudo -c -f /etc/sudoers.d/pagalava-restart >/dev/null 2>&1; then
+        echo "  /etc/sudoers.d/pagalava-restart is present but INVALID!"; problems=1
+    fi
+    if [ "$(stat -c '%a' "${MNT}/etc/sudoers.d/pagalava-restart")" != "440" ]; then
+        echo "  /etc/sudoers.d/pagalava-restart has the wrong mode!"; problems=1
+    fi
+fi
 if [ ! -f "${MNT}/etc/systemd/system/pagalava-firstboot.service" ]; then
     echo "  pagalava-firstboot.service unit file is missing from the image!"; problems=1
 fi

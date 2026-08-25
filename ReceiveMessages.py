@@ -420,16 +420,40 @@ def message_upgrade():
         logging.info("%s: Upgrade completed successfully", func_name)
         logging.info("%s: Script output: %s", func_name, result.stdout)
         
-        # Notify about restart requirement
-        logging.info("%s: System will need to be restarted to apply updates", func_name)
-        
-        # Schedule restart using absolute paths
-        subprocess.Popen(
-            ["/usr/bin/sudo", "/usr/bin/systemctl", "restart", "receive_messages.service"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
-        )
-        
+        # Restarting needs root, and the service does not run as root. Probe
+        # first: sudo from a service has no tty, so if a password is required
+        # it fails silently and the device keeps running the OLD code until
+        # someone reboots — while reporting a successful upgrade the whole
+        # time. That is exactly what it looked like when an upgraded device
+        # kept reporting its previous version.
+        can_restart = False
+        try:
+            probe = subprocess.run(
+                ["/usr/bin/sudo", "-n", "true"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10
+            )
+            can_restart = probe.returncode == 0
+        except (subprocess.SubprocessError, OSError) as e:
+            logging.warning("%s: could not probe sudo - %s", func_name, e)
+
+        if can_restart:
+            logging.info("%s: restarting the service to apply the update", func_name)
+            # Popen, not run: a successful restart kills this process, so there
+            # is nothing to wait for.
+            subprocess.Popen(
+                ["/usr/bin/sudo", "/usr/bin/systemctl", "restart", "receive_messages.service"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+        else:
+            # Say so plainly. The files are updated and correct; only the
+            # running process is stale, and a reboot fixes it.
+            logging.warning(
+                "%s: FILES UPDATED but this service cannot restart itself "
+                "(passwordless sudo unavailable). The device keeps running the "
+                "previous version until it is rebooted.", func_name
+            )
+
         return True
     except subprocess.SubprocessError as e:
         logging.error("%s: Upgrade failed - %s", func_name, e)
