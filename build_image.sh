@@ -295,6 +295,18 @@ rm -f  "${MNT}/etc/wpa_supplicant/wpa_supplicant.conf"
 rm -f  "${MNT}/root/.bash_history" "${MNT}/home/${PAGALAVA_USER}/.bash_history"
 rm -f  "${MNT}/etc/machine-id"; : > "${MNT}/etc/machine-id"
 rm -rf "${MNT}/var/log/"*
+# Recreate the journal directory the strip above just deleted. Its EXISTENCE is
+# what makes journald persistent, so removing build logs must not take it with
+# them — the first-boot log is the one worth keeping. root:systemd-journal 2755
+# is what journald expects; the gid is looked up in the image, not assumed.
+mkdir -p "${MNT}/var/log/journal"
+_jgid="$(chroot "$MNT" getent group systemd-journal 2>/dev/null | cut -d: -f3)"
+if [ -n "$_jgid" ]; then
+    chown "0:${_jgid}" "${MNT}/var/log/journal"
+    chmod 2755 "${MNT}/var/log/journal"
+else
+    echo "  note: systemd-journal group not found; journald will fix ownership on boot"
+fi
 : > "${MNT}/etc/resolv.conf"
 
 log "verifying the image carries no identity"
