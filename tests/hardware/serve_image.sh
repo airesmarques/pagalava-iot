@@ -57,16 +57,23 @@ losetup -d "\$LOOP"
 REMOTE_SCRIPT
 
 echo "Attaching as a writable disk"
+# cdrom MUST be cleared. A PiKVM reboot leaves the LUN in CD-ROM mode, which
+# presents 2048-byte blocks; the Raspberry Pi bootloader only handles 512 and
+# fails with "Unsupported block size 2048 / MSD error 5", then stops scanning.
+# Both flags can only be set while no file is attached.
 kvm "bash -s" <<REMOTE_SCRIPT || die "attach failed"
 set -eu
 echo '' > ${LUN}/file
+echo 0 > ${LUN}/cdrom
 echo 0 > ${LUN}/ro
 echo '${REMOTE}' > ${LUN}/file
 REMOTE_SCRIPT
 
 RO="$(kvm "cat ${LUN}/ro")"
+CD="$(kvm "cat ${LUN}/cdrom")"
 FILE="$(kvm "cat ${LUN}/file")"
 [ "$RO" = "0" ] || die "image attached read-only; a booting OS will fail to write"
+[ "$CD" = "0" ] || die "LUN is in CD-ROM mode; the Pi bootloader cannot read 2048-byte blocks"
 echo "  attached: ${FILE} (writable)"
 echo
 echo "The target must now be powered on. A Raspberry Pi cannot be woken"
