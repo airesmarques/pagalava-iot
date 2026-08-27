@@ -1,27 +1,32 @@
 #!/bin/bash
 
 # Configuration variables
-# Refuse to run as root. The script installs into $HOME and writes a systemd
-# unit with User=$(whoami), so `sudo bash setup_pagalava_iot.sh` — a very natural
-# thing to type — silently installs into /root and leaves the IoT service running
-# as root from root's home directory. Nothing warns, and it is hard to spot on a
-# customer site. It still uses sudo internally for the steps that need it.
-if [ "$(id -u)" -eq 0 ]; then
-    echo "" >&2
-    echo "ERRO: nao executes este script como root (nem com sudo)." >&2
-    echo "" >&2
-    echo "  O script instala em \$HOME e cria o servico com o teu utilizador." >&2
-    echo "  Executado como root, instala em /root e o servico corre como root." >&2
-    echo "" >&2
-    echo "  Executa assim, com o teu utilizador normal:" >&2
-    echo "      bash setup_pagalava_iot.sh" >&2
-    echo "" >&2
-    echo "  (o script pede sudo apenas nos passos que precisam)" >&2
-    echo "" >&2
-    exit 1
-fi
 REPO_URL="https://github.com/airesmarques/pagalava-iot"
-USERNAME="${USER}"
+# When invoked through sudo, install for the user who actually ran it rather
+# than for root. Without this, `sudo bash setup_pagalava_iot.sh` — a natural
+# thing to type for an install script — installs into /root and leaves the IoT
+# service running as root, silently and with nothing to notice on a customer
+# site. Deliberately not a hard refusal: a device already installed that way
+# must stay repairable by whoever is standing in front of it.
+if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER}" != "root" ]; then
+    USERNAME="${SUDO_USER}"
+    HOME="$(getent passwd "${SUDO_USER}" | cut -d: -f6)"
+    echo "A correr com sudo: a instalar para o utilizador '${USERNAME}' em ${HOME}"
+    echo "(e nao para o root, que era o que acontecia antes)"
+elif [ "$(id -u)" -eq 0 ]; then
+    # Genuine root login, no sudo. Proceed, but say what will happen, because
+    # the result is a service running as root from /root.
+    echo "" >&2
+    echo "AVISO: estas a correr como root sem sudo." >&2
+    echo "       O PagaLava vai ficar instalado em /root e o servico vai correr" >&2
+    echo "       como root. Funciona, mas nao e a configuracao recomendada." >&2
+    echo "       Para instalar normalmente, sai do root e corre:" >&2
+    echo "           bash setup_pagalava_iot.sh" >&2
+    echo "" >&2
+    USERNAME="root"
+else
+    USERNAME="${USER}"
+fi
 GROUPNAME="${USER}"
 WORKINGDIR="${HOME}/pagalava-iot"
 VENVDIR="${WORKINGDIR}/.venv"

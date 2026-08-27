@@ -356,6 +356,25 @@ def message_activate(json_data: dict):
         except Exception as e:
             logging.warning("Activation callback failed (non-critical): %s", e)
 
+
+def _install_mode():
+    """Describe how this device was installed: 'root', 'user', or 'image'.
+
+    An image-installed device has .env as a symlink to .env.<environment>; a
+    manual install leaves a plain file. Running as root additionally means the
+    service was set up with sudo and lives in /root.
+    """
+    try:
+        running_as_root = os.geteuid() == 0
+        env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+        from_image = os.path.islink(env_path)
+        if running_as_root:
+            return "root"
+        return "image" if from_image else "user"
+    except OSError:
+        return "unknown"
+
+
 def message_reboot():
     func_name = "message_reboot"
     logging.info("%s: Reboot command received.", func_name)
@@ -592,7 +611,14 @@ def message_diagnostic(json_data: dict):
     payload = {
         "device_id": DEVICE_ID,
         "verification_code": verification_code,
-        "ip_address": ip_address
+        "ip_address": ip_address,
+        # How this device was installed. Devices set up with `sudo` before that
+        # was handled ended up running as root out of /root, which works but is
+        # not the intended configuration. Reporting it lets the fleet be counted
+        # so those devices can be tidied up as hardware is replaced. The backend
+        # reads its fields with .get(), so this is ignored until something wants
+        # it — no coordinated deploy required.
+        "install_mode": _install_mode()
     }
 
     logging.info("%s: Enviando callback de conectividade para %s (IP: %s)", func_name, url, ip_address)
@@ -711,6 +737,9 @@ def main():
             # The connect() call is implicit in the SDK, but we can add explicit connection handling
             
             logging.info("Connected successfully. Waiting for C2D messages. Press Ctrl-C to exit.")
+            # Recorded on every start, so the journal shows how a device was
+            # installed even if it never runs a connectivity check.
+            logging.info("Install mode: %s (version %s)", _install_mode(), VERSION)
 
             # A device imaged from the golden image has no config.json and
             # cannot activate anything until the cloud sends one. Ask now that
