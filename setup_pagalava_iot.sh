@@ -205,6 +205,28 @@ sudo systemctl daemon-reload
 sudo systemctl enable "${SERVICENAME}"
 sudo systemctl start "${SERVICENAME}"
 
+# Let the service restart itself after an upgrade. Without this, an upgrade
+# replaces the files but the running process keeps the old code, so the device
+# reports the OLD version until someone reboots it — which looks exactly like a
+# failed upgrade. The image build installs the same rule; this covers manual
+# installs so both paths behave alike.
+#
+# Deliberately narrow: this one command and nothing else. A malformed file in
+# /etc/sudoers.d locks EVERYONE out of sudo, so it is validated with visudo
+# before being installed, and simply skipped if it does not pass.
+SUDOERSTMP="$(mktemp)"
+cat > "${SUDOERSTMP}" <<SUDOERS
+${USERNAME} ALL=(root) NOPASSWD: /usr/bin/systemctl restart ${SERVICENAME}
+SUDOERS
+if sudo visudo -c -f "${SUDOERSTMP}" >/dev/null 2>&1; then
+    sudo install -m 440 -o root -g root "${SUDOERSTMP}" /etc/sudoers.d/pagalava-restart
+    echo "Installed /etc/sudoers.d/pagalava-restart - upgrades can restart the service."
+else
+    echo "WARNING: the generated sudoers rule failed validation; skipping it." >&2
+    echo "         Upgrades will apply but need a reboot to take effect." >&2
+fi
+rm -f "${SUDOERSTMP}"
+
 echo ""
 echo "=============================================="
 echo "Service ${SERVICENAME} has been started successfully."
