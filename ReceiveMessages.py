@@ -14,7 +14,6 @@ from dotenv import load_dotenv
 from azure.iot.device import IoTHubDeviceClient
 
 import relay_ops
-from minute_token import generate_minute_token
 from relay_ops import MachineNotConfiguredException  # Import the custom exception
 
 # Load environment variables from .env file.
@@ -101,153 +100,6 @@ def message_configure(config_data: dict):
     except Exception as e:
         logging.error("%s: Failed to save configuration - %s", func_name, e)
 
-CONFIG_FILE = "config.json"
-
-
-def config_is_missing() -> bool:
-    """
-    True when this device has no machine-to-relay map.
-
-    A Pi installed from the golden image starts out this way: config.json is
-    gitignored and never ships in the image, so until the cloud sends one every
-    activation raises MachineNotConfiguredException.
-    """
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    return not os.path.exists(os.path.join(script_dir, CONFIG_FILE))
-
-
-def request_configuration() -> bool:
-    """
-    Ask the backend to send this device its machine-to-relay configuration.
-
-    The configuration does not come back in the HTTP response — the backend
-    pushes it over IoT Hub as a normal 'configure' message, which
-    message_configure() then writes to config.json. This call only asks.
-
-    Safe to call more than once: the backend ignores repeat requests for the
-    same laundry within a minute and answers 429.
-
-    :return: True if the backend accepted the request.
-    """
-    func_name = "request_configuration"
-    env_info = determine_environment()
-    url = f"https://{env_info['url']}/api/laundries/iot/request_configuration"
-    payload = {
-        "device_id": DEVICE_ID,
-        "token": generate_minute_token(DEVICE_ID),
-    }
-
-    try:
-        response = requests.post(
-            url,
-            json=payload,
-            headers={"Content-Type": "application/json"},
-            timeout=15,
-        )
-        if response.status_code in (200, 202):
-            logging.info("%s: Configuration requested successfully", func_name)
-            return True
-        if response.status_code == 429:
-            logging.info(
-                "%s: Configuration was already requested recently, waiting for it",
-                func_name,
-            )
-            return True
-        logging.error(
-            "%s: Backend refused the request - HTTP %s %s",
-            func_name, response.status_code, response.text[:200],
-        )
-        return False
-    except requests.exceptions.RequestException as e:
-        # Not fatal: the device keeps running and will ask again on the next
-        # activation that finds no configuration.
-        logging.error("%s: Could not reach the backend - %s", func_name, e)
-        return False
-
-
-def request_configuration_if_missing() -> None:
-    """Ask for configuration at startup, but only if this device has none."""
-    if config_is_missing():
-        logging.warning(
-            "request_configuration_if_missing: No %s on this device - requesting one",
-            CONFIG_FILE,
-        )
-        request_configuration()
-    else:
-        logging.info(
-            "request_configuration_if_missing: %s present, nothing to request",
-            CONFIG_FILE,
-        )
-
-
-def message_test_relay(json_data: dict):
-    """
-    Click relays directly, for bench-testing a freshly assembled board.
-
-    This is the only path that addresses relays rather than machines. Every
-    other activation goes through config.json, which maps machine -> relay; a
-    board being assembled has no machines yet, and the installer needs to check
-    all sixteen relays regardless of how many machines will eventually use
-    them.
-
-    relay_to_gpio_map lives in relay_ops, so this works on a device whose
-    configuration has never been sent.
-
-    Accepts either:
-        {"msg_type": "test_relay", "relay_number": 9}
-        {"msg_type": "test_relay", "module": "1" | "2" | "all"}
-
-    Optional "duration_s" shortens or lengthens each click. The default is
-    deliberately shorter than a real activation, so a connected machine is not
-    started by a wiring check.
-    """
-    func_name = "message_test_relay"
-
-    duration = json_data.get("duration_s", 1.0)
-    try:
-        duration = float(duration)
-    except (TypeError, ValueError):
-        duration = 1.0
-    # Bounded: a stuck-closed relay energises whatever is wired to it.
-    duration = max(0.1, min(duration, 3.0))
-
-    relay_number = json_data.get("relay_number")
-    module = json_data.get("module")
-
-    try:
-        if relay_number is not None:
-            relay_number = int(relay_number)
-            logging.info("%s: pulsing relay %s for %ss", func_name, relay_number, duration)
-            relay_ops.pulse_relay(relay_number, duration)
-            logging.info("%s: relay %s done", func_name, relay_number)
-            return
-
-        if module is not None:
-            module = str(module).lower()
-            if module == "1":
-                relays = relay_ops.MODULE_1_RELAYS
-            elif module == "2":
-                relays = relay_ops.MODULE_2_RELAYS
-            elif module in ("all", "ma", "todos"):
-                relays = list(relay_ops.relay_to_gpio_map)
-            else:
-                logging.error("%s: unknown module %r", func_name, module)
-                return
-            logging.info("%s: pulsing module %s (%s relays)", func_name, module, len(relays))
-            done = relay_ops.pulse_relays(relays, duration)
-            logging.info("%s: pulsed relays %s", func_name, done)
-            return
-
-        logging.error("%s: neither relay_number nor module given", func_name)
-    except KeyError as e:
-        logging.error("%s: %s", func_name, e)
-    #pylint: disable=broad-except
-    except Exception as e:
-        # Never let a wiring test kill the messaging loop.
-        logging.error("%s: unexpected error - %s", func_name, e)
-    #pylint: enable=broad-except
-
-
 def message_wake_up():
     func_name = "message_wake_up"
     logging.info("%s: Wake up signal received.", func_name)
@@ -297,8 +149,7 @@ def message_activate(json_data: dict):
                 machine_id=machine_id,
                 number_of_impulses=number_of_impulses
             )
-        elif (VERSION.startswith("1.5") or VERSION.startswith("1.6")
-              or VERSION.startswith("1.7") or VERSION.startswith("1.8")):
+        elif VERSION.startswith("1.5") or VERSION.startswith("1.6"):
             logging.info("%s: Using v1.5+ activation method (v1.2 relay + callback)", func_name)
             relay_ops.activate_machine_v1_2(
                 machine_id=machine_id,
@@ -317,14 +168,6 @@ def message_activate(json_data: dict):
         logging.error("%s: %s", func_name, e)
         activation_status = "FAILED"
         activation_error_code = "MACHINE_NOT_CONFIGURED"
-        # This is the device discovering it has no relay map, arriving by a
-        # different route than the startup check. Ask for one so the next
-        # activation can succeed: without this the device stays unable to
-        # activate anything until someone notices and presses a button in the
-        # dashboard, and nothing about the failure is visible from the cloud.
-        # This activation is still lost — asking cannot rescue it.
-        logging.info("%s: Requesting configuration so the next attempt can work", func_name)
-        request_configuration()
     except KeyError as e:
         logging.error("%s: Missing key in JSON data - %s", func_name, e)
         activation_status = "FAILED"
@@ -355,25 +198,6 @@ def message_activate(json_data: dict):
             logging.info("Activation callback sent to %s", callback_url)
         except Exception as e:
             logging.warning("Activation callback failed (non-critical): %s", e)
-
-
-def _install_mode():
-    """Describe how this device was installed: 'root', 'user', or 'image'.
-
-    An image-installed device has .env as a symlink to .env.<environment>; a
-    manual install leaves a plain file. Running as root additionally means the
-    service was set up with sudo and lives in /root.
-    """
-    try:
-        running_as_root = os.geteuid() == 0
-        env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
-        from_image = os.path.islink(env_path)
-        if running_as_root:
-            return "root"
-        return "image" if from_image else "user"
-    except OSError:
-        return "unknown"
-
 
 def message_reboot():
     func_name = "message_reboot"
@@ -439,47 +263,16 @@ def message_upgrade():
         logging.info("%s: Upgrade completed successfully", func_name)
         logging.info("%s: Script output: %s", func_name, result.stdout)
         
-        # Restarting needs root, and the service does not run as root. Probe
-        # first: sudo from a service has no tty, so if a password is required
-        # it fails silently and the device keeps running the OLD code until
-        # someone reboots — while reporting a successful upgrade the whole
-        # time. That is exactly what it looked like when an upgraded device
-        # kept reporting its previous version.
-        can_restart = False
-        try:
-            # -l asks "am I allowed to run this" without running it.
-            # Deliberately NOT `sudo -n true`: a device installed from the golden
-            # image has a narrow sudoers rule listing only the commands this
-            # service needs, so `true` may not be permitted even when the restart
-            # is. Probing the wrong command reported "cannot restart" on exactly
-            # the devices this was written to fix.
-            probe = subprocess.run(
-                ["/usr/bin/sudo", "-n", "-l",
-                 "/usr/bin/systemctl", "restart", "receive_messages.service"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10
-            )
-            can_restart = probe.returncode == 0
-        except (subprocess.SubprocessError, OSError) as e:
-            logging.warning("%s: could not probe sudo - %s", func_name, e)
-
-        if can_restart:
-            logging.info("%s: restarting the service to apply the update", func_name)
-            # Popen, not run: a successful restart kills this process, so there
-            # is nothing to wait for.
-            subprocess.Popen(
-                ["/usr/bin/sudo", "/usr/bin/systemctl", "restart", "receive_messages.service"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
-            )
-        else:
-            # Say so plainly. The files are updated and correct; only the
-            # running process is stale, and a reboot fixes it.
-            logging.warning(
-                "%s: FILES UPDATED but this service cannot restart itself "
-                "(passwordless sudo unavailable). The device keeps running the "
-                "previous version until it is rebooted.", func_name
-            )
-
+        # Notify about restart requirement
+        logging.info("%s: System will need to be restarted to apply updates", func_name)
+        
+        # Schedule restart using absolute paths
+        subprocess.Popen(
+            ["/usr/bin/sudo", "/usr/bin/systemctl", "restart", "receive_messages.service"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        
         return True
     except subprocess.SubprocessError as e:
         logging.error("%s: Upgrade failed - %s", func_name, e)
@@ -612,13 +405,6 @@ def message_diagnostic(json_data: dict):
         "device_id": DEVICE_ID,
         "verification_code": verification_code,
         "ip_address": ip_address
-        # NOTE: do NOT add fields here without adding them to the backend's
-        # allow-list first. The endpoint is decorated with
-        # @az_func_request_params(allowed=[...]) from yimaipy, which REJECTS
-        # unknown parameters with 400 - it does not ignore them. Adding
-        # install_mode here broke connectivity verification on every device that
-        # upgraded, until the field was removed again. The install mode is still
-        # logged at startup, so it remains visible in the journal.
     }
 
     logging.info("%s: Enviando callback de conectividade para %s (IP: %s)", func_name, url, ip_address)
@@ -678,8 +464,6 @@ def message_handler(message):
         message_upgrade()
     elif msg_type == 'get_version':
         message_version(json_data)
-    elif msg_type == 'test_relay':
-        message_test_relay(json_data)
     elif msg_type == 'diagnostic':
         message_diagnostic(json_data)
     else:
@@ -706,10 +490,6 @@ def main():
     
     # Initial backoff time in seconds
     backoff_time = 60
-
-    # Guards the startup configuration request so a reconnect loop does not
-    # repeat it; MachineNotConfiguredException is the recovery path instead.
-    requested_configuration = False
     max_backoff_time = 300  # 5 minutes
     
     while True:
@@ -737,17 +517,6 @@ def main():
             # The connect() call is implicit in the SDK, but we can add explicit connection handling
             
             logging.info("Connected successfully. Waiting for C2D messages. Press Ctrl-C to exit.")
-            # Recorded on every start, so the journal shows how a device was
-            # installed even if it never runs a connectivity check.
-            logging.info("Install mode: %s (version %s)", _install_mode(), VERSION)
-
-            # A device imaged from the golden image has no config.json and
-            # cannot activate anything until the cloud sends one. Ask now that
-            # the network is definitely up. Only once per process: the retry
-            # path is the activation handler below.
-            if not requested_configuration:
-                request_configuration_if_missing()
-                requested_configuration = True
             
             # Keep the script running to listen for messages
             while True:

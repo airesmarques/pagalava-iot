@@ -1,5 +1,5 @@
 #flask
-requests
+#requests
 RPi.GPIO
 spidev
 azure-iot-device
