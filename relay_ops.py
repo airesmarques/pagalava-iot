@@ -326,6 +326,50 @@ def activate_machine_v1_2(
 #
 
 
+MODULE_1_RELAYS = [1, 2, 3, 4, 6, 8]
+MODULE_2_RELAYS = [9, 10, 11, 12, 13, 14, 15, 16]
+
+
+def pulse_relay(relay_number: int, duration_s: float = 1.0):
+    """
+    Click one relay, briefly.
+
+    For bench testing a freshly assembled board: the installer wants to hear
+    and see the relay operate, with no machine attached. Deliberately shorter
+    than a real activation, which is long enough to trip a machine's coin
+    input.
+
+    Note this needs no config.json — relay_to_gpio_map is a constant here, so
+    it works on a device whose machines have never been configured.
+
+    :param relay_number: relay label as printed on the board (1-16).
+    :param duration_s: how long to hold it closed.
+    :raises KeyError: if the relay number is not on the map.
+    """
+    if relay_number not in relay_to_gpio_map:
+        raise KeyError(f"Unknown relay number: {relay_number}")
+    control_relay(relay_number, GPIO.LOW)
+    time.sleep(duration_s)
+    control_relay(relay_number, GPIO.HIGH)
+
+
+def pulse_relays(relay_numbers, duration_s: float = 1.0, gap_s: float = 0.6):
+    """
+    Click a series of relays in order, so the installer can walk the board.
+
+    :param relay_numbers: iterable of relay labels.
+    :param duration_s: hold time per relay.
+    :param gap_s: pause between relays, so two clicks are distinguishable.
+    :return: the relays actually pulsed.
+    """
+    done = []
+    for relay_number in relay_numbers:
+        pulse_relay(relay_number, duration_s)
+        done.append(relay_number)
+        time.sleep(gap_s)
+    return done
+
+
 def test_all(speed: int = 1):
     for relay_label in relay_to_gpio_map:
         print(f"Testing {relay_label}")
@@ -340,7 +384,7 @@ def test_all(speed: int = 1):
 # Test module 1
 def test_module_1(speed: int=1):
     # List of relays in Module 1
-    module_1_relays = [1, 2, 3, 4, 6, 8]
+    module_1_relays = MODULE_1_RELAYS
 
     for relay_label in module_1_relays:
         print(f"Testing {relay_label} in Module 1")
@@ -354,7 +398,7 @@ def test_module_1(speed: int=1):
 
 def test_module_2(speed: int = 1):
     # List of relays in Module 2
-    module_2_relays = [9, 10, 11, 12, 13, 14, 15, 16]
+    module_2_relays = MODULE_2_RELAYS
 
     for relay_label in module_2_relays:
         print(f"Testing {relay_label} in Module 2")
