@@ -20,7 +20,11 @@ SECONDS_PER_MINUTE = 60
 TOKEN_LENGTH = 16
 
 
-def generate_minute_token(device_id: str, timestamp: int | None = None) -> str:
+# NOTE: no PEP 604 annotations (`int | None`) anywhere in this file, or in any
+# module the service imports. Devices in the field run Debian 11 with Python
+# 3.9, where that syntax is a SyntaxError at import time — it took a laundromat
+# offline in a crash loop. tests/test_python39_compat.py enforces this.
+def generate_minute_token(device_id, timestamp=None):
     """
     Generate this device's verification token for a given time.
 
