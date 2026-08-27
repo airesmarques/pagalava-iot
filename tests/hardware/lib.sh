@@ -63,8 +63,13 @@ tgt() {
 # password on the same stdin — the password then becomes the script.
 tgt_root() {
     local cmd="$1"
-    if tgt 'sudo -n true' >/dev/null 2>&1; then
-        tgt "sudo -n bash -c $(printf '%q' "$cmd")"
+    # Deliberately NOT probing with `sudo -n true`. Our own sudoers rule grants
+    # `true` passwordlessly, so that probe reports "I have passwordless sudo"
+    # on a device where only a handful of specific commands are permitted — and
+    # the real command then fails silently. Same mistake the firmware made.
+    # Try the actual command; fall back to the password only if it is refused.
+    if tgt "sudo -n bash -c $(printf '%q' "$cmd")" 2>/dev/null; then
+        return 0
     elif [ -n "${TARGET_PASS:-}" ]; then
         tgt "echo $(printf '%q' "$TARGET_PASS") | sudo -S bash -c $(printf '%q' "$cmd") 2>/dev/null"
     else

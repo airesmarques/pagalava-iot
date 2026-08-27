@@ -155,6 +155,11 @@ raspi-config nonint do_wifi_country PT || true
 # wizard on an attached console. We have a user; disable it.
 systemctl disable userconfig.service 2>/dev/null || true
 rm -f /etc/systemd/system/multi-user.target.wants/userconfig.service
+# Disabling the service is NOT enough: the "SSH may not work until a valid user
+# has been set up" text is an sshd Banner, configured separately in
+# sshd_config.d/rename_user.conf. It kept appearing on every login after the
+# service was disabled, which is alarming on a device that is working fine.
+rm -f /etc/ssh/sshd_config.d/rename_user.conf
 # The same package also gates a getty override for the wizard.
 rm -f /etc/systemd/system/getty@tty1.service.d/autologin.conf 2>/dev/null || true
 
@@ -342,6 +347,9 @@ if [ "$(chroot "$MNT" raspi-config nonint get_wifi_country 2>/dev/null)" != "PT"
 fi
 if [ -e "${MNT}/etc/systemd/system/multi-user.target.wants/userconfig.service" ]; then
     echo "  userconfig.service is still enabled — it will nag on every login!"; problems=1
+fi
+if grep -rqs "^Banner" "${MNT}/etc/ssh/sshd_config.d/" "${MNT}/etc/ssh/sshd_config" 2>/dev/null; then
+    echo "  an sshd Banner is still configured — the first-user nag will show on every login!"; problems=1
 fi
 if [ ! -d "${MNT}/var/log/journal" ]; then
     echo "  journal is not persistent — first-boot logs will be lost on reboot!"; problems=1

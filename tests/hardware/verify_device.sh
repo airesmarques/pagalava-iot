@@ -58,12 +58,16 @@ echo
 echo "Privileges the service actually needs"
 # A service has no tty, so every one of these must be passwordless or the
 # corresponding dashboard action fails silently.
+# Read the NOPASSWD grants directly. `sudo -n -l <cmd>` is NOT usable here: it
+# answers "is this authorised", and our users are in the sudo group, so it says
+# yes for everything — including commands that would demand a password the
+# service cannot supply.
+NOPASS="$(tgt 'sudo -n -l 2>/dev/null' | tr -d '\r' | grep -i 'NOPASSWD:' || true)"
 for c in "/usr/bin/systemctl restart receive_messages.service" "/sbin/reboot"; do
-    if tgt "sudo -n -l ${c}" >/dev/null 2>&1; then
-        ok "permitted without a password: ${c}"
-    else
-        bad "NOT permitted: ${c} — the matching dashboard action will fail silently"
-    fi
+    case "$NOPASS" in
+        *"$c"*) ok "permitted without a password: ${c}" ;;
+        *)      bad "NOT permitted without a password: ${c} — the matching dashboard action will fail silently" ;;
+    esac
 done
 # Narrowness is only meaningful on the flashed path, where the image controls
 # sudoers completely. A manual install inherits `NOPASSWD: ALL` from Raspberry
@@ -72,9 +76,10 @@ done
 # ours. Asserting otherwise would fail every manual install for no reason.
 if [ "$MODE" = "flashed" ]; then
     for c in "/bin/bash" "/bin/rm"; do
-        tgt "sudo -n -l ${c}" >/dev/null 2>&1 \
-            && bad "sudo is broader than it should be: ${c} is permitted" \
-            || ok "correctly denied: ${c}"
+        case "$NOPASS" in
+            *"$c"*) bad "sudo is broader than it should be: ${c} is passwordless" ;;
+            *)      ok "not passwordless: ${c}" ;;
+        esac
     done
 else
     skip "sudo narrowness (a manual install inherits NOPASSWD:ALL from Pi OS)"
@@ -86,9 +91,16 @@ ACT="$(tgt 'systemctl is-active receive_messages.service' 2>/dev/null | tr -d '\
 [ "$ACT" = "active" ] && ok "receive_messages is active" || bad "receive_messages is ${ACT:-unknown}"
 VER="$(tgt "python3 -c \"import json;print(json.load(open('${REPO}/version.json'))['version'])\"" 2>/dev/null | tr -d '\r')"
 [ -n "$VER" ] && ok "reports version ${VER}" || bad "could not read version.json"
-tgt "test -f ${REPO}/config.json" >/dev/null 2>&1 \
-    && ok "config.json present (the device fetched its relay map)" \
-    || bad "no config.json — the device never received its configuration"
+# The device asks the cloud for its config on boot and the reply is asynchronous,
+# so a check run immediately after boot can lose the race. Wait rather than
+# reporting a failure that fixes itself seconds later.
+CONF=1
+for _ in $(seq 1 12); do
+    if tgt "test -f ${REPO}/config.json" >/dev/null 2>&1; then CONF=0; break; fi
+    sleep 5
+done
+[ "$CONF" = "0" ] && ok "config.json present (the device fetched its relay map)" \
+                  || bad "no config.json after 60s — the device never received its configuration"
 
 echo
 echo "Connectivity"
