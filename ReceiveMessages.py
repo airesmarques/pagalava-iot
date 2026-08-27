@@ -611,14 +611,14 @@ def message_diagnostic(json_data: dict):
     payload = {
         "device_id": DEVICE_ID,
         "verification_code": verification_code,
-        "ip_address": ip_address,
-        # How this device was installed. Devices set up with `sudo` before that
-        # was handled ended up running as root out of /root, which works but is
-        # not the intended configuration. Reporting it lets the fleet be counted
-        # so those devices can be tidied up as hardware is replaced. The backend
-        # reads its fields with .get(), so this is ignored until something wants
-        # it — no coordinated deploy required.
-        "install_mode": _install_mode()
+        "ip_address": ip_address
+        # NOTE: do NOT add fields here without adding them to the backend's
+        # allow-list first. The endpoint is decorated with
+        # @az_func_request_params(allowed=[...]) from yimaipy, which REJECTS
+        # unknown parameters with 400 - it does not ignore them. Adding
+        # install_mode here broke connectivity verification on every device that
+        # upgraded, until the field was removed again. The install mode is still
+        # logged at startup, so it remains visible in the journal.
     }
 
     logging.info("%s: Enviando callback de conectividade para %s (IP: %s)", func_name, url, ip_address)
