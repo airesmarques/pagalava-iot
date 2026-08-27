@@ -428,8 +428,15 @@ def message_upgrade():
         # kept reporting its previous version.
         can_restart = False
         try:
+            # -l asks "am I allowed to run this" without running it.
+            # Deliberately NOT `sudo -n true`: a device installed from the golden
+            # image has a narrow sudoers rule listing only the commands this
+            # service needs, so `true` may not be permitted even when the restart
+            # is. Probing the wrong command reported "cannot restart" on exactly
+            # the devices this was written to fix.
             probe = subprocess.run(
-                ["/usr/bin/sudo", "-n", "true"],
+                ["/usr/bin/sudo", "-n", "-l",
+                 "/usr/bin/systemctl", "restart", "receive_messages.service"],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10
             )
             can_restart = probe.returncode == 0

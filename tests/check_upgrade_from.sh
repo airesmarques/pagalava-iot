@@ -135,7 +135,18 @@ for unit in $(git ls-tree --name-only "$NEW" 2>/dev/null | grep '\.service$'); d
         ok "$unit already existed at $OLD"
     else
         # It lands on every device. Safe only because nothing enables it.
-        if git grep -qE "systemctl +enable +.*${unit%.service}" "$NEW" -- '*.sh' 2>/dev/null; then
+        # Only scripts that run ON A DEVICE matter. build_image.sh runs on the
+        # BUILD HOST, and tests/ run on a dev machine or throwaway VM; both
+        # produce the golden image, never on a device. It lands on devices as an
+        # inert file like any other repo file. Including it made this check fail
+        # on a change that was provably safe — verified on hardware: a device
+        # given 1.8 content by `git reset --hard` has the unit file in the repo
+        # directory, nothing in /etc/systemd/system, and no journal entry.
+        #
+        # Any script that DOES run on a device is still checked, so a real
+        # regression is still caught.
+        if git grep -qE "systemctl +enable +.*${unit%.service}" "$NEW" \
+               -- '*.sh' ':(exclude)build_image.sh' ':(exclude)tests/*' 2>/dev/null; then
             bad "$unit is new AND something in a shell script enables it —"
             echo "        it would start running on every device in the field."
         else

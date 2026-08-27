@@ -221,7 +221,13 @@ install -m 644 ${WORKINGDIR}/pagalava-firstboot.service /etc/systemd/system/paga
 # Deliberately ONE command, not blanket NOPASSWD. Validated before being put
 # in place: a malformed file in /etc/sudoers.d breaks sudo for every user.
 cat > /tmp/pagalava-restart <<SUDOERS
-${PAGALAVA_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl restart receive_messages.service
+# Every privileged operation the running service performs, and nothing else.
+# reboot is here because message_reboot() runs `sudo <reboot>`: without it, a
+# reboot command from the dashboard fails silently on an image-installed device,
+# where the user has no blanket NOPASSWD (a manual install gets one from Pi OS's
+# 010_pi-nopasswd, which is why this went unnoticed). All three reboot paths are
+# listed because the firmware probes for whichever exists.
+${PAGALAVA_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl restart receive_messages.service, /usr/bin/systemctl reboot, /sbin/reboot, /usr/sbin/reboot, /bin/reboot, /bin/true, /usr/bin/true
 SUDOERS
 if visudo -c -f /tmp/pagalava-restart >/dev/null 2>&1; then
     install -m 440 -o root -g root /tmp/pagalava-restart /etc/sudoers.d/pagalava-restart

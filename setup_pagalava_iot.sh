@@ -1,6 +1,25 @@
 #!/bin/bash
 
 # Configuration variables
+# Refuse to run as root. The script installs into $HOME and writes a systemd
+# unit with User=$(whoami), so `sudo bash setup_pagalava_iot.sh` — a very natural
+# thing to type — silently installs into /root and leaves the IoT service running
+# as root from root's home directory. Nothing warns, and it is hard to spot on a
+# customer site. It still uses sudo internally for the steps that need it.
+if [ "$(id -u)" -eq 0 ]; then
+    echo "" >&2
+    echo "ERRO: nao executes este script como root (nem com sudo)." >&2
+    echo "" >&2
+    echo "  O script instala em \$HOME e cria o servico com o teu utilizador." >&2
+    echo "  Executado como root, instala em /root e o servico corre como root." >&2
+    echo "" >&2
+    echo "  Executa assim, com o teu utilizador normal:" >&2
+    echo "      bash setup_pagalava_iot.sh" >&2
+    echo "" >&2
+    echo "  (o script pede sudo apenas nos passos que precisam)" >&2
+    echo "" >&2
+    exit 1
+fi
 REPO_URL="https://github.com/airesmarques/pagalava-iot"
 USERNAME="${USER}"
 GROUPNAME="${USER}"
@@ -216,7 +235,7 @@ sudo systemctl start "${SERVICENAME}"
 # before being installed, and simply skipped if it does not pass.
 SUDOERSTMP="$(mktemp)"
 cat > "${SUDOERSTMP}" <<SUDOERS
-${USERNAME} ALL=(root) NOPASSWD: /usr/bin/systemctl restart ${SERVICENAME}
+${USERNAME} ALL=(root) NOPASSWD: /usr/bin/systemctl restart ${SERVICENAME}, /usr/bin/systemctl reboot, /sbin/reboot, /usr/sbin/reboot, /bin/reboot, /bin/true, /usr/bin/true
 SUDOERS
 if sudo visudo -c -f "${SUDOERSTMP}" >/dev/null 2>&1; then
     sudo install -m 440 -o root -g root "${SUDOERSTMP}" /etc/sudoers.d/pagalava-restart
