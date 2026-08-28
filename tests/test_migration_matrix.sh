@@ -41,6 +41,22 @@ pass=0; fail=0
 BARE="$(mktemp -d)/repo.git"
 git clone -q --bare . "$BARE"
 
+# A CI checkout does not necessarily carry tags or the full history, and
+# "CHECKOUTFAIL" inside a container is a useless way to discover that. Check
+# here, where the message can be clear.
+missing=""
+for row in $FROM_VERSIONS; do
+    [ -n "$row" ] || continue
+    r="${row%%:*}"
+    git --git-dir="$BARE" rev-parse --verify -q "${r}^{commit}" >/dev/null 2>&1 || missing="${missing} ${r}"
+done
+if [ -n "$missing" ]; then
+    echo "SETUP ERROR: these refs are not in the checkout:${missing}" >&2
+    echo "  A CI job needs the full history and tags. In GitLab set" >&2
+    echo "  GIT_DEPTH: \"0\" and GIT_FETCH_EXTRA_FLAGS: --tags" >&2
+    exit 2
+fi
+
 for deb in $OSES; do
   img="${IMG[$deb]:-}"
   [ -n "$img" ] || { echo "  ?? unknown Debian $deb"; continue; }
@@ -58,7 +74,7 @@ apt-get update -qq >/dev/null 2>&1
 apt-get install -y -qq python3 python3-venv git >/dev/null 2>&1
 git clone -q /repo.git /dev 2>/dev/null
 cd /dev
-git checkout -q ${ref} 2>/dev/null || { echo 'CHECKOUTFAIL'; exit 1; }
+git checkout -q ${ref} 2>/tmp/co.err || { echo CHECKOUTFAIL; sed 's/^/    /' /tmp/co.err | head -3; exit 1; }
 python3 -m venv --system-site-packages /venv >/dev/null 2>&1
 /venv/bin/pip install -q azure-iot-device python-dotenv requests >/dev/null 2>&1 || { echo PIPFAIL; exit 1; }
 mkdir -p /stub/RPi

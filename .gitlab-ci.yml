@@ -18,6 +18,11 @@ stages:
 
 variables:
   GIT_DEPTH: "0"          # migration tests need history, not a shallow clone
+  # ...and tags. The migration matrix starts from versions in the field, some
+  # identified by tag (v1.6, v1.7) and some by bare SHA because they were never
+  # tagged (1.3, 1.5). Without this the checkout cannot reach them and every
+  # migration fails with an unhelpful checkout error.
+  GIT_FETCH_EXTRA_FLAGS: --tags
   DOCKER_DRIVER: overlay2
 
 default:
