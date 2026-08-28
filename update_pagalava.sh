@@ -15,11 +15,31 @@ set -u
 
 cd "$(dirname "$(readlink -f "$0")")" || exit 1
 
+# Which line of firmware this device follows.
+#
+# There is no dev/prod split in this repo, so the branch IS the channel. Devices
+# in the field track `main`, which is deliberately held at 1.7 until moving one
+# above that is a considered action rather than a button. Devices installed from
+# the golden image track the image's own line, because `main` is OLDER than they
+# are — pulling it would silently downgrade them, removing first-boot
+# provisioning, the relay test and this rollback check.
+#
+# A device inherits the channel from the branch it was installed from, and
+# .update-channel lets it be moved deliberately without editing this script.
+CHANNEL_FILE="$(dirname "$(readlink -f "$0")")/.update-channel"
+if [ -r "$CHANNEL_FILE" ]; then
+    CHANNEL="$(tr -d ' \t\r\n' < "$CHANNEL_FILE")"
+else
+    CHANNEL="release/1.8"
+fi
+: "${CHANNEL:=release/1.8}"
+
 PREV="$(/usr/bin/git rev-parse HEAD 2>/dev/null)"
 
+echo "Updating from channel: ${CHANNEL}"
 /usr/bin/git fetch --all
-/usr/bin/git reset --hard origin/main
-/usr/bin/git pull origin main
+/usr/bin/git reset --hard "origin/${CHANNEL}"
+/usr/bin/git pull origin "${CHANNEL}"
 
 NEW="$(/usr/bin/git rev-parse HEAD 2>/dev/null)"
 if [ "$PREV" = "$NEW" ]; then

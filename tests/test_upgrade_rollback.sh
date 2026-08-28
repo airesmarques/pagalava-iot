@@ -29,6 +29,10 @@ GOOD="$(git rev-parse HEAD)"
 
 git clone -q "$UP" "$DEV"
 cd "$DEV"
+# Tests 1 and 2 exercise a device that follows main. The script's built-in
+# default is the image's release line, because that is the only branch it ships
+# on — so a main-following device is stated explicitly here.
+echo "main" > .update-channel
 
 echo "=== 1. a healthy upgrade is accepted ==="
 cd "$UP" && echo "# harmless change" >> ReceiveMessages.py && git commit -qam "another good version"
@@ -65,6 +69,35 @@ fi
 python3 -c "import ast,sys; ast.parse(open('minute_token.py').read())" 2>/dev/null \
   && grep -q "timestamp=None" minute_token.py \
   && ok "the working file is back on disk" || bad "file content not restored"
+
+echo "=== 3. a device follows its channel, not whatever main happens to be ==="
+# The case that matters for the image: main is OLDER than the device. Pulling it
+# would silently downgrade an image-installed device, removing first-boot
+# provisioning and this very rollback check.
+cd "$UP"
+# Test 2 deliberately left a broken module in the upstream. Start this scenario
+# from a working state, or the import check rolls back for the right reason and
+# the channel behaviour is never actually exercised — which is what happened.
+echo 'def generate_minute_token(device_id, timestamp=None): return "x"' > minute_token.py
+git commit -qam "restore a working module"
+echo "# newer, only on the release line" >> ReceiveMessages.py
+git commit -qam "release-line change"
+RELEASE_TIP="$(git rev-parse HEAD)"
+git branch -q -f release/test HEAD
+# Move main BACKWARDS, as we did when holding the fleet at 1.7.
+git checkout -q -B main "$GOOD2"
+cd "$DEV"
+echo "release/test" > .update-channel
+CHOUT="$(bash update_pagalava.sh 2>&1)"; CHRC=$?
+[ $CHRC -eq 0 ] && ok "channel upgrade exits 0" || { bad "channel upgrade failed"; echo "$CHOUT" | sed "s/^/        /" | head -6; }
+if [ "$(git rev-parse HEAD)" = "$RELEASE_TIP" ]; then
+    ok "followed its channel to the newer release-line commit"
+elif [ "$(git rev-parse HEAD)" = "$GOOD2" ]; then
+    bad "DOWNGRADED to main - an image device would lose first-boot and the rollback check"
+else
+    bad "ended up somewhere unexpected"
+fi
+rm -f .update-channel
 
 echo ""
 echo "passed: $pass  failed: $fail"
