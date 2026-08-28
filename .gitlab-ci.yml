@@ -34,6 +34,9 @@ unit:
     # The tests import ReceiveMessages, so its real dependencies must be here.
     # RPi.GPIO and spidev are the exception: the tests stub those in sys.modules
     # because they cannot be installed off a Pi.
+    # git is needed by the upgrade-rollback test, which builds a throwaway
+    # upstream and device clone. python:*-slim does not ship it.
+    - apt-get update -qq && apt-get install -y -qq git >/dev/null
     - pip install -q pytest azure-iot-device python-dotenv requests
   script:
     - python -m pytest tests/ -q

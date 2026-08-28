@@ -5,6 +5,18 @@
 # service then cannot start. On a device with no inbound SSH that is a site
 # visit, so the upgrade has to undo itself.
 set -u
+
+# Refuse to run without the tools this needs. Without this guard the script
+# still printed "ok" for assertions it could not possibly have checked — git was
+# missing in CI and several cases reported success anyway. A test that passes
+# when it did not run is worse than no test: it is a false assurance.
+for tool in git python3; do
+    command -v "$tool" >/dev/null 2>&1 || {
+        echo "SETUP ERROR: $tool is required but not installed" >&2
+        exit 2
+    }
+done
+
 pass=0; fail=0
 ok()  { echo "  ok    $*"; pass=$((pass+1)); }
 bad() { echo "  FAIL  $*"; fail=$((fail+1)); }
@@ -15,7 +27,11 @@ trap 'rm -rf "$WORK"' EXIT
 
 # A tiny fake upstream and a device clone of it.
 UP="$WORK/upstream"; DEV="$WORK/device"
-mkdir -p "$UP" && cd "$UP" && git init -q . && git config user.email t@t && git config user.name t
+# -b main is explicit on purpose. `git init` defaults to `master` unless
+# init.defaultBranch is configured, so this test passed on a machine that had
+# that set and failed in a clean CI container — the test depended on the
+# developer's git config without saying so.
+mkdir -p "$UP" && cd "$UP" && git init -q -b main . && git config user.email t@t && git config user.name t
 cat > ReceiveMessages.py <<'PY'
 import minute_token
 def main(): pass
