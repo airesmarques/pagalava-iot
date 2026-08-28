@@ -34,12 +34,22 @@ declare -A IMG=( [11]=debian:bullseye-slim [12]=debian:bookworm-slim [13]=debian
 command -v docker >/dev/null 2>&1 || { echo "  skip  docker not available"; exit 0; }
 
 TARGET_SHA="$(git rev-parse "$TARGET")"
-echo "Migrating to $(git rev-parse --short "$TARGET_SHA") on Debian: ${OSES}"
+TARGET_LABEL="$(git show "${TARGET_SHA}:version.json" 2>/dev/null | python3 -c 'import json,sys;print(json.load(sys.stdin)["version"])' 2>/dev/null || echo "$TARGET")"
+echo "Target: ${TARGET_LABEL} ($(git rev-parse --short "$TARGET_SHA"))"
+echo "Debian versions tested: ${OSES}"
+echo "Starting from every version currently in the field."
 echo
 
 pass=0; fail=0
-BARE="$(mktemp -d)/repo.git"
+# The bare repo MUST live inside the working tree, not in mktemp. A CI job runs
+# in its own container whose /tmp is private, so a path there is invisible to
+# the Docker daemon and the mount silently arrives empty — every container then
+# reported "not a git repository". The workspace is a real host volume, so a
+# path under it is visible to both.
+BARE="${PWD}/.migration-repo.git"
+rm -rf "$BARE"
 git clone -q --bare . "$BARE"
+trap 'rm -rf "$BARE"' EXIT
 
 # A CI checkout does not necessarily carry tags or the full history, and
 # "CHECKOUTFAIL" inside a container is a useless way to discover that. Check
@@ -63,7 +73,7 @@ for deb in $OSES; do
   for row in $FROM_VERSIONS; do
     [ -n "$row" ] || continue
     ref="${row%%:*}"; label="${row##*:}"
-    printf "  Debian %-2s  %s -> target : " "$deb" "$label"
+    printf "  Debian %-2s  %-4s -> %-5s : " "$deb" "$label" "$TARGET_LABEL"
 
     out="$(docker run --rm -v "$BARE:/repo.git:ro" -w /tmp \
       -e IOT_CONNECTION_STRING="HostName=fake.azure-devices.net;DeviceId=rpiCI;SharedAccessKey=Y2ktdGVzdA==" \
@@ -72,8 +82,8 @@ set -u
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq >/dev/null 2>&1
 apt-get install -y -qq python3 python3-venv git >/dev/null 2>&1
-git clone -q /repo.git /dev 2>/dev/null
-cd /dev
+git clone -q /repo.git /device 2>/dev/null || { echo CLONEFAIL; exit 1; }
+cd /device
 git checkout -q ${ref} 2>/tmp/co.err || { echo CHECKOUTFAIL; sed 's/^/    /' /tmp/co.err | head -3; exit 1; }
 python3 -m venv --system-site-packages /venv >/dev/null 2>&1
 /venv/bin/pip install -q azure-iot-device python-dotenv requests >/dev/null 2>&1 || { echo PIPFAIL; exit 1; }
@@ -81,12 +91,14 @@ mkdir -p /stub/RPi
 printf 'BCM=BOARD=OUT=IN=HIGH=LOW=0\ndef setmode(*a,**k): pass\ndef setwarnings(*a,**k): pass\ndef setup(*a,**k): pass\ndef output(*a,**k): pass\ndef input(*a,**k): return 0\ndef cleanup(*a,**k): pass\n' > /stub/RPi/GPIO.py
 : > /stub/RPi/__init__.py
 printf 'class SpiDev:\n    def open(self,*a,**k): pass\n    def xfer2(self,*a,**k): return []\n    def close(self,*a,**k): pass\n' > /stub/spidev.py
-export PYTHONPATH=/stub:/dev
+export PYTHONPATH=/stub:/device
 # The migration itself: exactly what update_pagalava.sh does.
 git fetch -q origin ${TARGET_SHA} 2>/dev/null
 git reset --hard -q ${TARGET_SHA} 2>/dev/null || { echo RESETFAIL; exit 1; }
 # Does the service start on this OS after migrating?
-timeout 45 /venv/bin/python /dev/ReceiveMessages.py > /tmp/run.log 2>&1
+echo PYVER=\$(/venv/bin/python -c 'import sys;print(sys.version.split()[0])')
+echo GOTVER=\$(sed -n 's/.*\"version\"[^\"]*\"\([0-9.]*\)\".*/\\1/p' /device/version.json | head -1)
+timeout 45 /venv/bin/python /device/ReceiveMessages.py > /tmp/run.log 2>&1
 grep -q 'Instantiating IoT Hub client' /tmp/run.log && echo STARTED
 grep -q Traceback /tmp/run.log && { echo TRACEBACK; grep -A4 Traceback /tmp/run.log | tail -3; }
 " 2>&1)"
@@ -95,7 +107,9 @@ grep -q Traceback /tmp/run.log && { echo TRACEBACK; grep -A4 Traceback /tmp/run.
     # condition; a traceback after it is the MQTT connect, which CI cannot
     # satisfy and is not meant to.
     if echo "$out" | grep -q "STARTED"; then
-        echo "ok"
+        pyv="$(echo "$out" | grep -oE 'PYVER=[0-9.]+' | cut -d= -f2 | head -1)"
+        gotv="$(echo "$out" | grep -oE 'GOTVER=[0-9.]+' | cut -d= -f2 | head -1)"
+        echo "ok   python ${pyv:-?}, now reports ${gotv:-?}, service started"
         pass=$((pass+1))
     else
         echo "FAIL — never reached client instantiation"
@@ -105,7 +119,6 @@ grep -q Traceback /tmp/run.log && { echo TRACEBACK; grep -A4 Traceback /tmp/run.
   done
 done
 
-rm -rf "$(dirname "$BARE")"
 echo
 echo "migrations — passed: ${pass}  failed: ${fail}"
 [ "$fail" -eq 0 ]
