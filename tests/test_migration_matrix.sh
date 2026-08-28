@@ -85,6 +85,9 @@ apt-get install -y -qq python3 python3-venv git >/dev/null 2>&1
 git clone -q /repo.git /device 2>/dev/null || { echo CLONEFAIL; exit 1; }
 cd /device
 git checkout -q ${ref} 2>/tmp/co.err || { echo CHECKOUTFAIL; sed 's/^/    /' /tmp/co.err | head -3; exit 1; }
+echo BEFORE_SHA=\$(git rev-parse --short HEAD)
+echo BEFORE_VER=\$(sed -n 's/.*\"version\"[^\"]*\"\([0-9.]*\)\".*/\\1/p' /device/version.json | head -1)
+echo BEFORE_HAS_FIRSTBOOT=\$([ -f /device/firstboot.sh ] && echo yes || echo no)
 python3 -m venv --system-site-packages /venv >/dev/null 2>&1
 /venv/bin/pip install -q azure-iot-device python-dotenv requests >/dev/null 2>&1 || { echo PIPFAIL; exit 1; }
 mkdir -p /stub/RPi
@@ -95,6 +98,8 @@ export PYTHONPATH=/stub:/device
 # The migration itself: exactly what update_pagalava.sh does.
 git fetch -q origin ${TARGET_SHA} 2>/dev/null
 git reset --hard -q ${TARGET_SHA} 2>/dev/null || { echo RESETFAIL; exit 1; }
+echo AFTER_SHA=\$(git rev-parse --short HEAD)
+echo AFTER_HAS_FIRSTBOOT=\$([ -f /device/firstboot.sh ] && echo yes || echo no)
 # Does the service start on this OS after migrating?
 echo PYVER=\$(/venv/bin/python -c 'import sys;print(sys.version.split()[0])')
 echo GOTVER=\$(sed -n 's/.*\"version\"[^\"]*\"\([0-9.]*\)\".*/\\1/p' /device/version.json | head -1)
@@ -106,10 +111,18 @@ grep -q Traceback /tmp/run.log && { echo TRACEBACK; grep -A4 Traceback /tmp/run.
     # Same rule as the OS matrix: reaching client instantiation is the pass
     # condition; a traceback after it is the MQTT connect, which CI cannot
     # satisfy and is not meant to.
+    pyv="$(echo "$out"  | grep -oE 'PYVER=[0-9.]+'        | cut -d= -f2 | head -1)"
+    bver="$(echo "$out" | grep -oE 'BEFORE_VER=[0-9.]+'   | cut -d= -f2 | head -1)"
+    bsha="$(echo "$out" | grep -oE 'BEFORE_SHA=[0-9a-f]+' | cut -d= -f2 | head -1)"
+    asha="$(echo "$out" | grep -oE 'AFTER_SHA=[0-9a-f]+'  | cut -d= -f2 | head -1)"
+    aver="$(echo "$out" | grep -oE 'GOTVER=[0-9.]+'       | cut -d= -f2 | head -1)"
+    bfb="$(echo "$out"  | grep -oE 'BEFORE_HAS_FIRSTBOOT=[a-z]+' | cut -d= -f2 | head -1)"
+    afb="$(echo "$out"  | grep -oE 'AFTER_HAS_FIRSTBOOT=[a-z]+'  | cut -d= -f2 | head -1)"
     if echo "$out" | grep -q "STARTED"; then
-        pyv="$(echo "$out" | grep -oE 'PYVER=[0-9.]+' | cut -d= -f2 | head -1)"
-        gotv="$(echo "$out" | grep -oE 'GOTVER=[0-9.]+' | cut -d= -f2 | head -1)"
-        echo "ok   python ${pyv:-?}, now reports ${gotv:-?}, service started"
+        echo "ok"
+        printf '      before : version.json=%-5s commit=%-8s firstboot.sh=%s\n' "${bver:-?}" "${bsha:-?}" "${bfb:-?}"
+        printf '      after  : version.json=%-5s commit=%-8s firstboot.sh=%s\n' "${aver:-?}" "${asha:-?}" "${afb:-?}"
+        printf '      ran on : Debian %s, Python %s -- service started and reached the IoT Hub client\n' "$deb" "${pyv:-?}"
         pass=$((pass+1))
     else
         echo "FAIL — never reached client instantiation"
