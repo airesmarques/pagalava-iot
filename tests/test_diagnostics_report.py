@@ -15,6 +15,7 @@ import os
 import sys
 import types
 import unittest
+import unittest.mock
 from unittest.mock import patch
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -128,3 +129,56 @@ class TheCredentialNeverTravels(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ConfigAndClock(unittest.TestCase):
+    """
+    The two states that make a device look healthy while it is not.
+
+    A device with no config.json fails every activation silently, and a device
+    whose clock is behind cannot complete the IoT Hub TLS handshake at all. Both
+    were invisible to the fleet before this, and both were seen on the 1.8.1
+    hardware test.
+    """
+
+    def test_has_config_reports_no_when_the_file_is_absent(self):
+        with patch("os.path.exists", return_value=False):
+            self.assertEqual(diagnostics_report._has_config(), "no")
+
+    def test_has_config_reports_yes_when_the_file_is_present(self):
+        with patch("os.path.exists", return_value=True):
+            self.assertEqual(diagnostics_report._has_config(), "yes")
+
+    def test_config_machines_counts_the_relay_map(self):
+        payload = json.dumps({"1": {"relay_number": 4}, "2": {"relay_number": 5}})
+        with patch("builtins.open", unittest.mock.mock_open(read_data=payload)):
+            self.assertEqual(diagnostics_report._config_machines(), "2")
+
+    def test_config_machines_reports_zero_for_an_empty_map(self):
+        """An empty map is a real answer, and the alarming one."""
+        with patch("builtins.open", unittest.mock.mock_open(read_data="{}")):
+            self.assertEqual(diagnostics_report._config_machines(), "0")
+
+    def test_a_missing_config_leaves_the_count_absent_rather_than_crashing(self):
+        with patch("builtins.open", side_effect=FileNotFoundError):
+            report = diagnostics_report.collect()
+        self.assertNotIn("config_machines", report)
+
+    def test_time_synced_reads_timedatectl(self):
+        import types
+        with patch("subprocess.run", return_value=types.SimpleNamespace(
+                returncode=0, stdout=b"yes\n")):
+            self.assertEqual(diagnostics_report._time_synced(), "yes")
+
+    def test_an_unsynced_clock_is_reported_as_no_not_absent(self):
+        """The whole point: "behind" must be distinguishable from "unknown"."""
+        import types
+        with patch("subprocess.run", return_value=types.SimpleNamespace(
+                returncode=0, stdout=b"no\n")):
+            self.assertEqual(diagnostics_report._time_synced(), "no")
+
+    def test_a_missing_timedatectl_is_survived(self):
+        with patch("subprocess.run", side_effect=FileNotFoundError):
+            report = diagnostics_report.collect()
+        self.assertIsInstance(report, dict)
+        self.assertNotIn("time_synced", report)

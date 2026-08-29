@@ -8,6 +8,7 @@
 #   TARGET_HOST   the Pi under test              (required)
 #   TARGET_USER   ssh user on the target         (default pagalava)
 #   TARGET_PASS   ssh password for that user     (required unless keys are set up)
+#   PROV_FILE     provisioning file to read TARGET_PASS from, if it is not set
 #   LAUNDRY_ID    laundry the device belongs to  (default 99)
 #   MSD_DIR       image store on the PiKVM       (default /var/lib/kvmd/msd)
 #
@@ -22,6 +23,36 @@ LAUNDRY_ID="${LAUNDRY_ID:-99}"
 MSD_DIR="${MSD_DIR:-/var/lib/kvmd/msd}"
 
 PASS=0; FAIL=0; SKIP=0
+
+# --- reading a provisioning file ----------------------------------------------
+# Values in a provisioning file may be quoted. firstboot.sh strips the quotes
+# (firstboot.sh:193) before setting the password, so anything that reads the file
+# by hand and forgets to do the same gets a password that is wrong by exactly two
+# characters and a "Permission denied" that looks like a broken install. That
+# happened during the 1.8.1 hardware test and cost a verify run reporting 13
+# false failures, every one of them just an SSH refusal.
+#
+# So parse it in exactly one place, the same way firstboot does.
+prov_value() {
+    # prov_value <file> <KEY>
+    local file="$1" key="$2"
+    [ -r "$file" ] || die "cannot read provisioning file: $file"
+    grep -m1 "^${key}=" "$file" | cut -d= -f2- | tr -d '"' | tr -d '\r\n'
+}
+
+prov_password() { prov_value "$1" PAGALAVA_PASSWORD; }
+
+# The device id is embedded in the connection string rather than given directly.
+prov_device_id() {
+    prov_value "$1" IOT_CONNECTION_STRING | sed -n 's/.*DeviceId=\([^;]*\).*/\1/p'
+}
+
+# If the caller pointed at a provisioning file instead of exporting a password,
+# derive it. Keeps the documented workflow copy-pasteable.
+if [ -z "${TARGET_PASS:-}" ] && [ -n "${PROV_FILE:-}" ]; then
+    TARGET_PASS="$(prov_password "$PROV_FILE")"
+    export TARGET_PASS
+fi
 
 ok()   { printf '  ok    %s\n' "$*"; PASS=$((PASS+1)); }
 bad()  { printf '  FAIL  %s\n' "$*"; FAIL=$((FAIL+1)); }

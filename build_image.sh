@@ -306,6 +306,20 @@ rm -f  "${MNT}/etc/wpa_supplicant/wpa_supplicant.conf"
 rm -f  "${MNT}/root/.bash_history" "${MNT}/home/${PAGALAVA_USER}/.bash_history"
 rm -f  "${MNT}/etc/machine-id"; : > "${MNT}/etc/machine-id"
 rm -rf "${MNT}/var/log/"*
+
+# Seed the clock to the build time. A Pi has no RTC, so at first boot it believes
+# whatever fake-hwclock last saved — which in a golden image is whenever the base
+# Raspberry Pi OS image was produced, potentially many months earlier. IoT Hub
+# then refuses the TLS handshake with "certificate is not yet valid" and the
+# device cannot connect AT ALL until NTP corrects it. Observed on the 1.8.1
+# hardware test: the device came up believing it was four months earlier and only
+# connected once timesyncd caught up. It recovered, but on a site where NTP is
+# slow or filtered this is a device that looks dead on arrival with no
+# explanation on screen.
+#
+# This does not remove the need for NTP; it shrinks the window to "time since
+# this image was built" instead of "time since Raspberry Pi OS was released".
+date -u '+%Y-%m-%d %H:%M:%S' > "${MNT}/etc/fake-hwclock.data"
 # Recreate the journal directory the strip above just deleted. Its EXISTENCE is
 # what makes journald persistent, so removing build logs must not take it with
 # them — the first-boot log is the one worth keeping. root:systemd-journal 2755
@@ -363,6 +377,11 @@ if [ -f "${MNT}/etc/sudoers.d/pagalava-restart" ]; then
     if [ "$(stat -c '%a' "${MNT}/etc/sudoers.d/pagalava-restart")" != "440" ]; then
         echo "  /etc/sudoers.d/pagalava-restart has the wrong mode!"; problems=1
     fi
+fi
+if [ ! -s "${MNT}/etc/fake-hwclock.data" ]; then
+    echo "  /etc/fake-hwclock.data is missing or empty — first boot will start with a"
+    echo "  stale clock and IoT Hub will refuse the TLS handshake until NTP catches up."
+    problems=1
 fi
 if [ ! -f "${MNT}/etc/systemd/system/pagalava-firstboot.service" ]; then
     echo "  pagalava-firstboot.service unit file is missing from the image!"; problems=1
