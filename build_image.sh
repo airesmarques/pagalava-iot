@@ -227,7 +227,7 @@ install -m 644 ${WORKINGDIR}/pagalava-firstboot.service /etc/systemd/system/paga
 # in place: a malformed file in /etc/sudoers.d breaks sudo for every user.
 cat > /tmp/pagalava-restart <<SUDOERS
 # Every privileged operation the running service performs, and nothing else.
-# reboot is here because message_reboot() runs `sudo <reboot>`: without it, a
+# reboot is here because message_reboot() shells out to sudo reboot: without it, a
 # reboot command from the dashboard fails silently on an image-installed device,
 # where the user has no blanket NOPASSWD (a manual install gets one from Pi OS's
 # 010_pi-nopasswd, which is why this went unnoticed). All three reboot paths are
