@@ -137,7 +137,7 @@ class ConfigAndClock(unittest.TestCase):
 
     A device with no config.json fails every activation silently, and a device
     whose clock is behind cannot complete the IoT Hub TLS handshake at all. Both
-    were invisible to the fleet before this, and both were seen on the 1.8.1
+    were invisible to the fleet before this, and both were seen on the 1.9
     hardware test.
     """
 

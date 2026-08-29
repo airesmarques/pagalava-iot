@@ -26,13 +26,21 @@ cd "$(dirname "$(readlink -f "$0")")" || exit 1
 #
 # A device inherits the channel from the branch it was installed from, and
 # .update-channel lets it be moved deliberately without editing this script.
+#
+# The default moved from release/1.8 to release/1.9 when the image line was
+# renumbered (1.8.1 became 1.9, so that no version has three components — see
+# tests/test_version_format.py for why that matters). A device with no
+# .update-channel file follows the default, so release/1.8 is kept alive as a
+# mirror of release/1.9 for exactly one migration: a device still pointing at the
+# old branch pulls this script, and its NEXT upgrade follows release/1.9 on its
+# own. Do not delete release/1.8 until the devices on it have upgraded once.
 CHANNEL_FILE="$(dirname "$(readlink -f "$0")")/.update-channel"
 if [ -r "$CHANNEL_FILE" ]; then
     CHANNEL="$(tr -d ' \t\r\n' < "$CHANNEL_FILE")"
 else
-    CHANNEL="release/1.8"
+    CHANNEL="release/1.9"
 fi
-: "${CHANNEL:=release/1.8}"
+: "${CHANNEL:=release/1.9}"
 
 PREV="$(/usr/bin/git rev-parse HEAD 2>/dev/null)"
 

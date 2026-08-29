@@ -29,7 +29,7 @@ PASS=0; FAIL=0; SKIP=0
 # (firstboot.sh:193) before setting the password, so anything that reads the file
 # by hand and forgets to do the same gets a password that is wrong by exactly two
 # characters and a "Permission denied" that looks like a broken install. That
-# happened during the 1.8.1 hardware test and cost a verify run reporting 13
+# happened during the 1.9 hardware test and cost a verify run reporting 13
 # false failures, every one of them just an SSH refusal.
 #
 # So parse it in exactly one place, the same way firstboot does.

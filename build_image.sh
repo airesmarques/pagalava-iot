@@ -311,7 +311,7 @@ rm -rf "${MNT}/var/log/"*
 # whatever fake-hwclock last saved — which in a golden image is whenever the base
 # Raspberry Pi OS image was produced, potentially many months earlier. IoT Hub
 # then refuses the TLS handshake with "certificate is not yet valid" and the
-# device cannot connect AT ALL until NTP corrects it. Observed on the 1.8.1
+# device cannot connect AT ALL until NTP corrects it. Observed on the 1.9
 # hardware test: the device came up believing it was four months earlier and only
 # connected once timesyncd caught up. It recovered, but on a site where NTP is
 # slow or filtered this is a device that looks dead on arrival with no

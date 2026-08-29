@@ -186,7 +186,7 @@ def _time_synced():
 
     A Pi has no RTC. If the clock is behind, the IoT Hub TLS handshake fails with
     "certificate is not yet valid" and the device cannot connect at all — which
-    presents as a dead device with no explanation. Observed on the 1.8.1 image
+    presents as a dead device with no explanation. Observed on the 1.9 image
     test: the Pi booted believing it was four months earlier and only connected
     once NTP corrected it.
     """
