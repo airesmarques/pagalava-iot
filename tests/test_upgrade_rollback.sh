@@ -105,13 +105,31 @@ git checkout -q -B main "$GOOD2"
 cd "$DEV"
 echo "release/test" > .update-channel
 CHOUT="$(bash update_pagalava.sh 2>&1)"; CHRC=$?
-[ $CHRC -eq 0 ] && ok "channel upgrade exits 0" || { bad "channel upgrade failed"; echo "$CHOUT" | sed "s/^/        /" | head -6; }
-if [ "$(git rev-parse HEAD)" = "$RELEASE_TIP" ]; then
-    ok "followed its channel to the newer release-line commit"
-elif [ "$(git rev-parse HEAD)" = "$GOOD2" ]; then
-    bad "DOWNGRADED to main - an image device would lose first-boot and the rollback check"
+[ $CHRC -eq 0 ] && ok "upgrade exits 0" || { bad "upgrade failed"; echo "$CHOUT" | sed "s/^/        /" | head -6; }
+
+# The two lines want OPPOSITE behaviour here, and each is a safety property.
+#
+#   image line (channel-aware): must FOLLOW .update-channel. Falling back to
+#   main would downgrade the device and strip first-boot provisioning.
+#
+#   main (not channel-aware):   must IGNORE .update-channel. A manually
+#   installed device that could be diverted onto the image line would be
+#   pointed at code assuming provisioning it never had. `origin/main` is
+#   hardcoded precisely so no file on the device can redirect it.
+if grep -q "update-channel" "$REPO_SRC/update_pagalava.sh"; then
+    if [ "$(git rev-parse HEAD)" = "$RELEASE_TIP" ]; then
+        ok "channel-aware line followed its channel"
+    elif [ "$(git rev-parse HEAD)" = "$GOOD2" ]; then
+        bad "DOWNGRADED to main - an image device would lose first-boot and the rollback check"
+    else
+        bad "ended up somewhere unexpected"
+    fi
 else
-    bad "ended up somewhere unexpected"
+    if [ "$(git rev-parse HEAD)" = "$GOOD2" ]; then
+        ok "main line ignored .update-channel and stayed on main (cannot be diverted)"
+    else
+        bad "a file on the device diverted a manual install off main - channel separation is not enforced"
+    fi
 fi
 rm -f .update-channel
 

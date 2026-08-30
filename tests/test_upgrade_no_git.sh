@@ -54,7 +54,7 @@ case "$OUT" in
 esac
 
 case "$OUT" in
-    *"re-flash"*|*"Re-flash"*) ok "says what to do instead" ;;
+    *"re-flash"*|*"Re-flash"*|*"golden image"*) ok "says what to do instead" ;;
     *) bad "does not tell the operator how to change this device's firmware" ;;
 esac
 
