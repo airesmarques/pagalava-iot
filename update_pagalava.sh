@@ -17,12 +17,18 @@ cd "$(dirname "$(readlink -f "$0")")" || exit 1
 
 # Which line of firmware this device follows.
 #
-# There is no dev/prod split in this repo, so the branch IS the channel. Devices
-# in the field track `main`, which is deliberately held at 1.7 until moving one
-# above that is a considered action rather than a button. Devices installed from
-# the golden image track the image's own line, because `main` is OLDER than they
-# are — pulling it would silently downgrade them, removing first-boot
-# provisioning, the relay test and this rollback check.
+# There is no dev/prod split in this repo, so the branch IS the channel. Two
+# lines exist on purpose, and they correspond to how the device was installed:
+#
+#   manual install  ->  `main`         -> version 1.8
+#   image install   ->  `release/1.9`  -> version 1.9
+#
+# A device installed from the golden image must NOT follow `main`: that line is
+# older than it is, and pulling it would silently downgrade the device, removing
+# first-boot provisioning, the relay test and this rollback check.
+#
+# Moving `main` above 1.8 releases to every manually-installed device that
+# upgrades, so it is a considered action rather than a button.
 #
 # A device inherits the channel from the branch it was installed from, and
 # .update-channel lets it be moved deliberately without editing this script.
