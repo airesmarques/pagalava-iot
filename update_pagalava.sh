@@ -42,6 +42,28 @@ else
 fi
 : "${CHANNEL:=release/1.9}"
 
+# An image-installed device has no git metadata at all: build_image.sh seeds the
+# source from a local tree with --exclude=.git, so there is nothing to pull from
+# and no way to know what is installed.
+#
+# This has to be checked BEFORE anything else, because the failure is otherwise
+# silent and total. Every git command below fails, PREV and NEW both end up as
+# the empty string, and `[ "$PREV" = "$NEW" ]` is therefore TRUE — so this script
+# printed "Already up to date." and exited 0. A device that can never take an
+# upgrade reported success to the dashboard every single time it was asked.
+#
+# 1.9 images are knowingly shipped this way; upgrading such a device means
+# re-flashing it. Self-update for image installs is planned for 1.10. Until then
+# the only honest thing this script can do is refuse and say why.
+if ! /usr/bin/git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "CANNOT UPGRADE: $(pwd) is not a git repository." >&2
+    echo "This device was installed from a golden image, which ships without git" >&2
+    echo "metadata, so there is nothing to pull from and no version to compare." >&2
+    echo "To change its firmware, re-flash it with a newer image." >&2
+    echo "(Self-update for image installs is planned for 1.10.)" >&2
+    exit 2
+fi
+
 PREV="$(/usr/bin/git rev-parse HEAD 2>/dev/null)"
 
 echo "Updating from channel: ${CHANNEL}"

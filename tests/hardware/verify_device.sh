@@ -104,10 +104,51 @@ done
 
 echo
 echo "Connectivity"
-if tgt_root "journalctl -u receive_messages.service --no-pager -n 60" 2>/dev/null | grep -q "Connected successfully"; then
-    ok "connected to IoT Hub"
+# Evidence from the SDK, not from our own logging. This used to grep for
+# "Connected successfully" — a line ReceiveMessages printed UNCONDITIONALLY,
+# right after creating the client and before any handshake. So this check
+# reported a healthy connection on a device the hub was refusing with
+# "not authorised", and it passed 15/15 while doing it. The SDK's own callbacks
+# are the only lines here that mean a socket actually came up.
+JOURNAL="$(tgt_root "journalctl -u receive_messages.service --no-pager -n 120" 2>/dev/null)"
+if printf '%s' "$JOURNAL" | grep -qE "Connection State - Connected|connected with result code: 0"; then
+    ok "connected to IoT Hub (confirmed by the SDK, not by our own log line)"
 else
     bad "no successful IoT Hub connection in the journal"
+fi
+
+# The clock failure this release exists to prevent. A refusal is survivable —
+# the backoff loop retries — but it means the device sat idle when it did not
+# have to, so it is worth seeing.
+if printf '%s' "$JOURNAL" | grep -qi "not authoris"; then
+    bad "the hub refused this device (\"not authorised\") — clock skew at startup"
+else
+    ok "no auth refusal at startup (the clock was right before we connected)"
+fi
+
+echo
+echo "Upgradability"
+# A 15/15 pass used to hide the fact that the device could never take an upgrade
+# at all. Images built in LOCAL_REPO mode are seeded with `tar --exclude=.git`,
+# so there is no repository to pull into, and update_pagalava.sh used to report
+# "Already up to date" and exit 0 forever.
+#
+# 1.9 is knowingly shipped unupgradable — re-flashing is the upgrade path until
+# 1.10 — so this is reported, not failed. What IS required is that the device be
+# honest about it: the refusal must be loud.
+if tgt "test -d ${REPO}/.git" >/dev/null 2>&1; then
+    BRANCH="$(tgt "git -C ${REPO} rev-parse --abbrev-ref HEAD 2>/dev/null" | tr -d '\r')"
+    ok "can self-update (git install, on '${BRANCH:-unknown}')"
+else
+    UPD="$(tgt "cd ${REPO} && ./update_pagalava.sh 2>&1; echo EXIT=\$?" 2>/dev/null)"
+    case "$UPD" in
+        *"Already up to date"*)
+            bad "cannot self-update AND claims it can — update_pagalava.sh reports success" ;;
+        *"not a git repository"*)
+            skip "cannot self-update (image install, no .git) — refuses loudly, as intended for 1.9" ;;
+        *)
+            bad "cannot self-update and the refusal is unclear: ${UPD}" ;;
+    esac
 fi
 
 echo
