@@ -180,15 +180,21 @@ def _config_machines():
         return str(len(json.load(handle)))
 
 
-def _time_synced():
+def time_synced():
     """
     Whether the clock has been corrected since boot.
 
-    A Pi has no RTC. If the clock is behind, the IoT Hub TLS handshake fails with
-    "certificate is not yet valid" and the device cannot connect at all — which
-    presents as a dead device with no explanation. Observed on the 1.9 image
-    test: the Pi booted believing it was four months earlier and only connected
-    once NTP corrected it.
+    Public because ReceiveMessages waits on it before its first connection
+    attempt; this is the single place that decides what "synced" means.
+
+    A Pi has no RTC, and a wrong clock breaks the device in two stages. Far out,
+    the TLS handshake fails with "certificate is not yet valid". Closer in it
+    still fails, because the IoT Hub SAS token is time-based: the 1.9 image test
+    booted ~1h43m behind, passed certificate validation, and was refused with
+    "Connection Refused: not authorised". Seeding the clock at build time shrank
+    the skew but did not close the gap.
+
+    Returns "yes", "no", or None when the question cannot be answered.
     """
     result = subprocess.run(
         ["/usr/bin/timedatectl", "show", "-p", "NTPSynchronized", "--value"],
@@ -210,6 +216,25 @@ def _disk_free_mb():
 def _uptime_seconds():
     with open("/proc/uptime", "r", encoding="utf-8") as handle:
         return int(float(handle.read().split()[0]))
+
+
+# Seconds spent waiting for the clock at startup, set by ReceiveMessages once it
+# knows. Module state rather than a parameter so send()'s signature is unchanged.
+#
+# This is the ONLY way a slow-clock site becomes visible. The obvious signal
+# cannot work: the minute token is derived from this device's own clock, so a
+# device that is skewed has its report rejected with 401 and can never tell us
+# "time_synced: no". This value is sent afterwards, when the clock is right.
+_clock_wait_seconds = None
+
+
+def set_clock_wait_seconds(seconds):
+    """Record how long startup waited for the clock. Never raises."""
+    global _clock_wait_seconds
+    try:
+        _clock_wait_seconds = int(seconds)
+    except (TypeError, ValueError):
+        _clock_wait_seconds = None
 
 
 def collect():
@@ -248,7 +273,8 @@ def collect():
         "uptime_seconds": _safe(_uptime_seconds),
         "has_config": _safe(_has_config),
         "config_machines": _safe(_config_machines),
-        "time_synced": _safe(_time_synced),
+        "time_synced": _safe(time_synced),
+        "clock_wait_seconds": _clock_wait_seconds,
     }
 
     # Drop anything that could not be gathered, so the backend stores facts

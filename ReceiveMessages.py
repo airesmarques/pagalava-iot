@@ -721,6 +721,76 @@ def check_internet_connection():
     except socket.gaierror:
         return False
 
+# How long to wait at startup for the clock, and how often to look. Sync took
+# ~70s on the 1.9 hardware test; 300s is generous without being unbounded, and
+# matches the cap already used for reconnect backoff below.
+CLOCK_SYNC_TIMEOUT_SECONDS = 300
+CLOCK_SYNC_POLL_SECONDS = 5
+
+
+def wait_for_clock_sync(timeout_seconds=CLOCK_SYNC_TIMEOUT_SECONDS,
+                        poll_seconds=CLOCK_SYNC_POLL_SECONDS):
+    """
+    Wait until the clock has been corrected by NTP. Returns seconds waited.
+
+    A Pi has no RTC, so at first boot it believes whatever fake-hwclock last
+    saved. Everything this service then does needs a correct clock:
+
+      * the IoT Hub SAS token is time-based. On the 1.9 hardware test the device
+        booted ~1h43m behind, passed certificate validation, and was refused with
+        "Connection Refused: not authorised".
+      * the minute token used for diagnostics and for requesting configuration is
+        sha256("<device_id>:<minute>") from this clock, so a skewed device is
+        rejected 401 and cannot even report that it is skewed.
+
+    Without this the device still recovered, but only via the generic reconnect
+    backoff, which multiplies to a 300s cap - so it could sit idle for five
+    minutes after its clock was already right.
+
+    On timeout it returns anyway rather than blocking forever. A site where NTP
+    is filtered then behaves exactly as it does today: the connection is refused
+    and the backoff loop retries. This must never make things worse than not
+    waiting at all, which is also why it can never raise.
+    """
+    try:
+        state = diagnostics_report.time_synced()
+        if state is None:
+            # No timedatectl, or it would not answer. Waiting on a question that
+            # cannot be answered would hang startup for the full timeout.
+            logging.warning("Clock sync state unknown; connecting without waiting.")
+            return 0
+        if state == "yes":
+            return 0
+
+        logging.warning(
+            "Clock not synchronised yet; deferring the IoT Hub connection for up "
+            "to %ss. Connecting now would be refused: the SAS token is time-based.",
+            timeout_seconds,
+        )
+        waited = 0
+        while waited < timeout_seconds:
+            time.sleep(poll_seconds)
+            waited += poll_seconds
+            state = diagnostics_report.time_synced()
+            if state is None:
+                logging.warning("Clock sync state became unknown after %ss; "
+                                "connecting anyway.", waited)
+                return waited
+            if state == "yes":
+                logging.info("Clock synchronised after %ss; connecting.", waited)
+                return waited
+
+        logging.error(
+            "Clock STILL not synchronised after %ss. Connecting anyway - expect "
+            "'not authorised' until NTP reaches this site. Check the site's NTP path.",
+            waited,
+        )
+        return waited
+    except Exception as exc:  # deliberately broad: never block startup
+        logging.warning("Clock sync wait failed (%s); connecting anyway.", exc)
+        return 0
+
+
 def main():
     """Main function with reconnection logic following Azure best practices"""
     logging.info("Starting the Python IoT Hub C2D Messaging device sample...")
@@ -734,6 +804,9 @@ def main():
     # Guards the startup configuration request so a reconnect loop does not
     # repeat it; MachineNotConfiguredException is the recovery path instead.
     requested_configuration = False
+    # Guards the clock wait. main() is a retry loop, so an unguarded wait would
+    # burn the full timeout on EVERY reconnect at a site where NTP never arrives.
+    clock_wait_done = False
     max_backoff_time = 300  # 5 minutes
     
     while True:
@@ -749,7 +822,15 @@ def main():
                 
             # Reset backoff time when we have connectivity
             backoff_time = 60
-            
+
+            # Before the FIRST connection attempt, and only then. Placed here
+            # because everything below needs a correct clock: the hub's SAS
+            # token, the diagnostics report and the configuration request are
+            # all time-derived.
+            if not clock_wait_done:
+                diagnostics_report.set_clock_wait_seconds(wait_for_clock_sync())
+                clock_wait_done = True
+
             # Create a new client instance if needed
             if client is None:
                 logging.info("Instantiating IoT Hub client...")
@@ -757,10 +838,13 @@ def main():
                 client.on_message_received = message_handler
                 logging.info("IoT Hub client instantiated successfully.")
             
-            logging.info("Connecting to IoT Hub...")
-            # The connect() call is implicit in the SDK, but we can add explicit connection handling
-            
-            logging.info("Connected successfully. Waiting for C2D messages. Press Ctrl-C to exit.")
+            # NOT a connection confirmation. There is no client.connect() here and
+            # the SDK connects lazily, so the old "Connected successfully" printed
+            # while the hub was refusing us with "not authorised" - and reading it
+            # as success cost real time during the 1.9 clock investigation. Say
+            # only what is actually known at this point.
+            logging.info("IoT Hub client ready; the SDK connects on demand. "
+                         "Waiting for C2D messages. Press Ctrl-C to exit.")
             # Report what this device is, on every start. Passive fleet coverage:
             # most devices have no inbound SSH, so this is the only way we learn
             # what they run. send() never raises - a diagnostics failure must never

@@ -168,17 +168,55 @@ class ConfigAndClock(unittest.TestCase):
         import types
         with patch("subprocess.run", return_value=types.SimpleNamespace(
                 returncode=0, stdout=b"yes\n")):
-            self.assertEqual(diagnostics_report._time_synced(), "yes")
+            self.assertEqual(diagnostics_report.time_synced(), "yes")
 
     def test_an_unsynced_clock_is_reported_as_no_not_absent(self):
         """The whole point: "behind" must be distinguishable from "unknown"."""
         import types
         with patch("subprocess.run", return_value=types.SimpleNamespace(
                 returncode=0, stdout=b"no\n")):
-            self.assertEqual(diagnostics_report._time_synced(), "no")
+            self.assertEqual(diagnostics_report.time_synced(), "no")
 
     def test_a_missing_timedatectl_is_survived(self):
         with patch("subprocess.run", side_effect=FileNotFoundError):
             report = diagnostics_report.collect()
         self.assertIsInstance(report, dict)
         self.assertNotIn("time_synced", report)
+
+
+class TheClockWaitIsReportable(unittest.TestCase):
+    """
+    How long startup waited for the clock, and why it is reported at all.
+
+    The obvious signal cannot work: the minute token is derived from this
+    device's own clock, so a device whose clock is skewed has its report
+    rejected with 401 and can never tell us "time_synced: no". This value is set
+    after the wait ends, when the clock is right, so it is the only way a site
+    with a slow or filtered NTP path becomes visible from the dashboard.
+    """
+
+    def setUp(self):
+        diagnostics_report.set_clock_wait_seconds(None)
+
+    def tearDown(self):
+        diagnostics_report.set_clock_wait_seconds(None)
+
+    def test_absent_until_something_records_it(self):
+        self.assertNotIn("clock_wait_seconds", diagnostics_report.collect())
+
+    def test_a_wait_is_reported(self):
+        diagnostics_report.set_clock_wait_seconds(72)
+        self.assertEqual(diagnostics_report.collect()["clock_wait_seconds"], "72")
+
+    def test_zero_survives_because_it_is_a_real_answer(self):
+        """Already synced is a fact worth reporting, and 0 is falsy."""
+        diagnostics_report.set_clock_wait_seconds(0)
+        self.assertEqual(diagnostics_report.collect()["clock_wait_seconds"], "0")
+
+    def test_garbage_is_dropped_rather_than_stored(self):
+        diagnostics_report.set_clock_wait_seconds("not-a-number")
+        self.assertNotIn("clock_wait_seconds", diagnostics_report.collect())
+
+    def test_recording_a_wait_never_raises(self):
+        for bad in (None, "", object(), [1, 2]):
+            diagnostics_report.set_clock_wait_seconds(bad)
