@@ -16,6 +16,8 @@ from azure.iot.device import IoTHubDeviceClient
 import relay_ops
 from relay_ops import MachineNotConfiguredException  # Import the custom exception
 from heartbeat import start_heartbeat_thread
+import diagnostics_report
+from minute_token import generate_minute_token
 
 # Load environment variables from .env file.
 # override=True makes the .env file authoritative even when the systemd unit
@@ -150,7 +152,7 @@ def message_activate(json_data: dict):
                 machine_id=machine_id,
                 number_of_impulses=number_of_impulses
             )
-        elif VERSION.startswith(("1.5", "1.6", "1.7", "1.8")):
+        elif VERSION.startswith("1.5") or VERSION.startswith("1.6"):
             logging.info("%s: Using v1.5+ activation method (v1.2 relay + callback)", func_name)
             relay_ops.activate_machine_v1_2(
                 machine_id=machine_id,
@@ -423,6 +425,26 @@ def message_diagnostic(json_data: dict):
         logging.error("%s: Erro ao enviar callback de conectividade: %s", func_name, e)
         return False
 
+def message_report_diagnostics():
+    """
+    Report what this device is running, on request.
+
+    Answers questions that otherwise need SSH: which Debian, which Python, where
+    the connection string actually lives, how exposed the files are. Most devices
+    have no inbound SSH, so before this the only way to know was to guess.
+
+    Never raises: diagnostics failing must not affect anything else.
+    """
+    func_name = "message_report_diagnostics"
+    logging.info("%s: Diagnostics requested", func_name)
+    env_info = determine_environment()
+    ok = diagnostics_report.send(DEVICE_ID, env_info["url"], generate_minute_token)
+    if not ok:
+        logging.warning("%s: the report was not accepted", func_name)
+    return ok
+
+
+
 def message_handler(message):
     global RECEIVED_MESSAGES
     RECEIVED_MESSAGES += 1
@@ -465,6 +487,8 @@ def message_handler(message):
         message_upgrade()
     elif msg_type == 'get_version':
         message_version(json_data)
+    elif msg_type == 'report_diagnostics':
+        message_report_diagnostics()
     elif msg_type == 'diagnostic':
         message_diagnostic(json_data)
     else:
@@ -490,7 +514,7 @@ def main():
     # IoT Hub connection so the cloud watchdog still sees the device while
     # the hub connection is down or reconnecting.
     start_heartbeat_thread(DEVICE_ID, determine_environment()["url"])
-
+    
     # Initialize client at a broader scope so we can access it in finally block
     client = None
     
@@ -523,6 +547,12 @@ def main():
             # The connect() call is implicit in the SDK, but we can add explicit connection handling
             
             logging.info("Connected successfully. Waiting for C2D messages. Press Ctrl-C to exit.")
+            # Report what this device is, on every start. Passive fleet coverage:
+            # most devices have no inbound SSH, so this is the only way we learn
+            # what they run. diagnostics_report.send never raises - a diagnostics
+            # failure must never be why a laundromat stops taking payments.
+            diagnostics_report.send(DEVICE_ID, determine_environment()['url'],
+                                    generate_minute_token)
             
             # Keep the script running to listen for messages
             while True:

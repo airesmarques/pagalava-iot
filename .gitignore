@@ -1,4 +1,9 @@
 .venv/*
-__pycache__/*
+# Anchored patterns only match at the repo root: "__pycache__/*" contains a
+# slash, so git anchored it there and tests/__pycache__/ was tracked for months.
+# A trailing-slash pattern with no internal slash matches at any depth.
+__pycache__/
+*.py[cod]
 config.json
 .env*
+.migration-repo.git/
