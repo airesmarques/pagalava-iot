@@ -48,6 +48,30 @@ else
 fi
 : "${CHANNEL:=release/1.9}"
 
+# The channel must stay on the image line.
+#
+# .update-channel is read verbatim, so without this a single word in a file on
+# the device redirects it to `main` — which is OLDER than any image line. That
+# would strip first-boot provisioning, the relay test and the clock wait: a
+# downgrade dressed as an upgrade, and the one direction that actually breaks a
+# device.
+#
+# The opposite direction needs no guard: main's update script has no channel
+# logic at all and hardcodes origin/main, so a manually-installed device has no
+# code path here. This makes the protection symmetric, and by mechanism rather
+# than by nobody typing the wrong thing.
+case "$CHANNEL" in
+    release/*) ;;
+    *)
+        echo "REFUSING TO UPDATE: channel '${CHANNEL}' is not on the image line." >&2
+        echo "This device was installed from a golden image and must follow a" >&2
+        echo "release/* branch. Following '${CHANNEL}' would downgrade it and" >&2
+        echo "remove first-boot provisioning." >&2
+        echo "Fix ${CHANNEL_FILE}, or delete it to use the default." >&2
+        exit 2
+        ;;
+esac
+
 # An image-installed device has no git metadata at all: build_image.sh seeds the
 # source from a local tree with --exclude=.git, so there is nothing to pull from
 # and no way to know what is installed.
