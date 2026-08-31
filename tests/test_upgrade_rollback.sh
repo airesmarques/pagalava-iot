@@ -42,16 +42,21 @@ echo 'def generate_minute_token(device_id, timestamp=None): return "x"' > minute
 cp "$REPO_SRC/update_pagalava.sh" .
 git add -A && git commit -qm "good version"
 GOOD="$(git rev-parse HEAD)"
+# The upstream carries a release/* branch alongside main so one fixture serves
+# both lines: the image line refuses any channel outside release/*, and main's
+# script ignores the channel file entirely and pulls origin/main.
+git branch -q -f release/test HEAD
 
 git clone -q "$UP" "$DEV"
 cd "$DEV"
-# Tests 1 and 2 exercise a device that follows main. The script's built-in
-# default is the image's release line, because that is the only branch it ships
-# on — so a main-following device is stated explicitly here.
-echo "main" > .update-channel
+# Tests 1 and 2 need the device to follow the branch this fixture advances.
+# On the image line that MUST be a release/* channel — the script now refuses
+# anything else, because following `main` would downgrade an image install. On
+# main's line the file is ignored entirely, so writing it is harmless.
+echo "release/test" > .update-channel
 
 echo "=== 1. a healthy upgrade is accepted ==="
-cd "$UP" && echo "# harmless change" >> ReceiveMessages.py && git commit -qam "another good version"
+cd "$UP" && echo "# harmless change" >> ReceiveMessages.py && git commit -qam "another good version" && git branch -q -f release/test HEAD
 GOOD2="$(git rev-parse HEAD)"
 cd "$DEV"
 if bash update_pagalava.sh >/dev/null 2>&1; then ok "healthy upgrade exits 0"; else bad "healthy upgrade was rejected"; fi
@@ -69,7 +74,7 @@ import a_module_that_does_not_exist_anywhere
 def generate_minute_token(device_id, timestamp=None):
     return "x"
 PYEOF
-git commit -qam "broken on python 3.9"
+git commit -qam "broken on python 3.9" && git branch -q -f release/test HEAD
 BROKEN="$(git rev-parse HEAD)"
 cd "$DEV"
 out="$(bash update_pagalava.sh 2>&1)"; rc=$?
@@ -132,6 +137,42 @@ else
     fi
 fi
 rm -f .update-channel
+
+# The channel must not be able to point off the image line.
+#
+# .update-channel is read verbatim, so before the guard a single word in a file
+# on the device would send an image install to `main` — which is OLDER, and
+# strips first-boot provisioning, the relay test and the clock wait. A downgrade
+# dressed as an upgrade, and the only direction that actually breaks a device:
+# main's script has no channel logic at all, so the reverse cannot happen.
+if grep -q "update-channel" "$REPO_SRC/update_pagalava.sh"; then
+    echo
+    echo "The channel cannot leave the image line"
+    for bad in main feature/rpi5 ""; do
+        echo "$bad" > .update-channel
+        OUT="$(bash update_pagalava.sh 2>&1)"; RC=$?
+        LABEL="${bad:-<empty>}"
+        case "$OUT" in
+            *"REFUSING TO UPDATE"*)
+                [ "$RC" -ne 0 ] \
+                    && ok "refused '$LABEL' and exited non-zero" \
+                    || bad "refused '$LABEL' but exited 0 — the dashboard would call that success" ;;
+            *)
+                if [ -z "$bad" ]; then
+                    ok "empty channel fell back to the default rather than being followed"
+                else
+                    bad "FOLLOWED '$LABEL' — an image device can be downgraded onto the manual line"
+                fi ;;
+        esac
+    done
+    echo "release/other" > .update-channel
+    OUT="$(bash update_pagalava.sh 2>&1)"
+    case "$OUT" in
+        *"REFUSING TO UPDATE"*) bad "refused a legitimate release/* channel" ;;
+        *) ok "a legitimate release/* channel is still allowed" ;;
+    esac
+    rm -f .update-channel
+fi
 
 echo ""
 echo "passed: $pass  failed: $fail"
