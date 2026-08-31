@@ -15,6 +15,7 @@ from azure.iot.device import IoTHubDeviceClient
 
 import relay_ops
 from relay_ops import MachineNotConfiguredException  # Import the custom exception
+from heartbeat import start_heartbeat_thread
 import diagnostics_report
 from minute_token import generate_minute_token
 
@@ -508,6 +509,11 @@ def check_internet_connection():
 def main():
     """Main function with reconnection logic following Azure best practices"""
     logging.info("Starting the Python IoT Hub C2D Messaging device sample...")
+
+    # Liveness heartbeat (S37, v1.8+): daemon thread, independent of the
+    # IoT Hub connection so the cloud watchdog still sees the device while
+    # the hub connection is down or reconnecting.
+    start_heartbeat_thread(DEVICE_ID, determine_environment()["url"])
     
     # Initialize client at a broader scope so we can access it in finally block
     client = None
