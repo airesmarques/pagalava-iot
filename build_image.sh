@@ -124,6 +124,19 @@ usermod -aG gpio,spi,i2c,dialout,sudo ${PAGALAVA_USER} 2>/dev/null || true
 printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d
 chmod +x /usr/sbin/policy-rc.d
 
+# Prefer IPv4 for everything this chroot downloads.
+#
+# DNS returns pypi's AAAA record first, and a build host with no IPv6 route then
+# dials an address it cannot reach. pip retries until the build hangs, and the
+# only symptom is a wall of "SSLError(SSLZeroReturnError)" that never mentions
+# IPv6 — nothing points at the cause.
+#
+# This is why an identical source tree built on one host and hung on another:
+# the old build VM's network resolved differently. Pinning the preference makes
+# the build behave the same wherever it runs, which for a release artifact
+# matters more than the couple of milliseconds it costs.
+printf 'precedence ::ffff:0:0/96  100\n' >> /etc/gai.conf
+
 # initramfs-tools and raspi-firmware cannot run their maintainer scripts under
 # emulation: they look for a real boot device and an initramfs to rebuild, and
 # fail the whole apt transaction when they do not find one. Observed as:
