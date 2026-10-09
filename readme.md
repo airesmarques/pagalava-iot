@@ -7,7 +7,7 @@ Este repositório contém o software e a documentação do dispositivo de Pagame
 <img src="./instructions/tres-passos.svg" width="780" alt="Três passos: ligar os relés, gravar o cartão SD, ligar e confirmar">
 
 1. **Ligar os relés.** Siga a [Preparação do Hardware](./instructions/hardware.md): material necessário e o mapa dos pinos onde liga cada cabo. Um módulo de relés chega até 8 máquinas.
-2. **Gravar o cartão SD.** Em [gerir.pagalava.pt](https://gerir.pagalava.pt), abra a lavandaria e siga as instruções de instalação: descarregar a imagem PagaLava e o ficheiro de instalação, gravar a imagem no cartão e copiar o ficheiro para o cartão.
+2. **Gravar o cartão SD.** Em [gerir.pagalava.pt](https://gerir.pagalava.pt), abra a lavandaria e siga as instruções de instalação: descarregar a imagem PagaLava e o ficheiro de instalação, gravar a imagem no cartão e copiar o ficheiro para o cartão. Mais detalhes em [Instalação por cartão SD](./instructions/instalacao_cartao_sd.md).
 3. **Ligar e confirmar.** Ponha o cartão no Raspberry, ligue o cabo de rede e só depois a corrente. Passados alguns minutos, confirme na dashboard que a lavandaria aparece ligada.
 
 Não é preciso SSH nem escrever comandos.
