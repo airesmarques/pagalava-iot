@@ -2,12 +2,15 @@
 
 Este repositório contém o software e a documentação do dispositivo de Pagamentos PagaLava, baseado num Raspberry Pi.
 
-## Instalação
+## Instalar em três passos
 
-| | Guia | Descrição |
-|---|------|-----------|
-| 1 | [Preparação do Hardware](./instructions/hardware.md) | Material necessário e ligação dos módulos de relés ao Raspberry. |
-| 2 | [Instalação por cartão SD](https://gerir.pagalava.pt) | Método recomendado. As instruções estão na dashboard PagaLava, em gerir.pagalava.pt. |
+<img src="./instructions/tres-passos.svg" width="780" alt="Três passos: ligar os relés, gravar o cartão SD, ligar e confirmar">
+
+1. **Ligar os relés.** Siga a [Preparação do Hardware](./instructions/hardware.md): material necessário e o mapa dos pinos onde liga cada cabo. Um módulo de relés chega até 8 máquinas.
+2. **Gravar o cartão SD.** Em [gerir.pagalava.pt](https://gerir.pagalava.pt), abra a lavandaria e siga as instruções de instalação: descarregar a imagem PagaLava e o ficheiro de instalação, gravar a imagem no cartão e copiar o ficheiro para o cartão.
+3. **Ligar e confirmar.** Ponha o cartão no Raspberry, ligue o cabo de rede e só depois a corrente. Passados alguns minutos, confirme na dashboard que a lavandaria aparece ligada.
+
+Não é preciso SSH nem escrever comandos.
 
 Já usava o método anterior (Raspberry Pi Imager + scripts de instalação por SSH)? Continua disponível em
 [Instalação Manual (método anterior)](./instructions/instalacao_legacy.md).

@@ -1,3 +1,8 @@
+# Exemplo de organização com dois módulos
+
+Um módulo para as máquinas de lavar e outro para as de secar. É apenas um exemplo: qualquer relé pode servir qualquer máquina.
+Ver [Preparação do Hardware](./hardware.md).
+
 | Número | Módulo  | Relé  |
 |--------|---------|-------|
 | 1 (Lavar) | 1 | 1-1 |
