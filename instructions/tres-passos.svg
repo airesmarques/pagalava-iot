@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 230" width="780" role="img" aria-label="Três passos: ligar os relés, gravar o cartão SD, ligar e confirmar">
+<rect width="780" height="230" rx="18" fill="#f7fbff"/>
+<g transform="translate(10,10)">
+<g transform="translate(0,0)"><rect x="0" y="0" width="240" height="210" rx="16" fill="#ffffff" stroke="#dcecff"/>
+<text x="20" y="30" font-size="11" font-weight="700" letter-spacing="1" fill="#1f63ff" font-family="Inter,Helvetica,Arial,sans-serif">PASSO 1</text>
+<g transform="translate(40,44)" fill="none" stroke="#0f2f61" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="22" width="58" height="46" rx="5" fill="#eef5ff"/><rect x="96" y="14" width="56" height="62" rx="5" fill="#eef5ff"/><path stroke="#1f63ff" stroke-width="2.5" d="M66 34 C80 34 82 28 96 28 M66 45 C80 45 82 45 96 45 M66 56 C80 56 82 62 96 62"/></g>
+<text x="20" y="166" font-size="17" font-weight="700" fill="#0f2f61" font-family="Inter,Helvetica,Arial,sans-serif">Ligar os relés</text>
+<text x="20" y="188" font-size="12.5" fill="#4d6a94" font-family="Inter,Helvetica,Arial,sans-serif">um módulo chega até 8 máquinas</text></g>
+<g transform="translate(260,0)"><rect x="0" y="0" width="240" height="210" rx="16" fill="#ffffff" stroke="#dcecff"/>
+<text x="20" y="30" font-size="11" font-weight="700" letter-spacing="1" fill="#1f63ff" font-family="Inter,Helvetica,Arial,sans-serif">PASSO 2</text>
+<g transform="translate(40,44)" fill="none" stroke="#0f2f61" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path fill="#eef5ff" d="M92 12 h36 l14 14 v52 h-50 z"/><path d="M102 12 v14 M112 12 v14 M122 14 v12"/><rect x="14" y="26" width="36" height="44" rx="4" fill="#eef5ff"/><path d="M22 40 h20 M22 50 h20 M22 60 h12"/><path stroke="#1f63ff" stroke-width="2.5" d="M56 48 h26 M74 40 l8 8 -8 8"/></g>
+<text x="20" y="166" font-size="17" font-weight="700" fill="#0f2f61" font-family="Inter,Helvetica,Arial,sans-serif">Gravar o cartão SD</text>
+<text x="20" y="188" font-size="12.5" fill="#4d6a94" font-family="Inter,Helvetica,Arial,sans-serif">imagem + ficheiro de instalação</text></g>
+<g transform="translate(520,0)"><rect x="0" y="0" width="240" height="210" rx="16" fill="#ffffff" stroke="#dcecff"/>
+<text x="20" y="30" font-size="11" font-weight="700" letter-spacing="1" fill="#1f63ff" font-family="Inter,Helvetica,Arial,sans-serif">PASSO 3</text>
+<g transform="translate(40,44)" fill="none" stroke="#0f2f61" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="26" width="58" height="42" rx="5" fill="#eef5ff"/><path stroke="#1f63ff" stroke-width="2.5" d="M66 47 h34"/><circle cx="126" cy="47" r="24" fill="#eef5ff"/><path stroke="#0b7c6b" stroke-width="2.5" d="M115 47 l8 8 14 -16"/></g>
+<text x="20" y="166" font-size="17" font-weight="700" fill="#0f2f61" font-family="Inter,Helvetica,Arial,sans-serif">Ligar e confirmar</text>
+<text x="20" y="188" font-size="12.5" fill="#4d6a94" font-family="Inter,Helvetica,Arial,sans-serif">cabo de rede, depois a dashboard</text></g>
+</g></svg>

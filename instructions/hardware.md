@@ -1,24 +1,47 @@
 # Preparação do Hardware
 
-Este guia descreve o material necessário e a ligação dos módulos de relés ao Raspberry Pi.
+Este guia descreve o material necessário e a ligação dos módulos de relés ao Raspberry Pi 4.
 Aplica-se a qualquer método de instalação do software PagaLava.
 
 [← Voltar à página principal](../readme.md)
 
-## Pre-requisitos
+## Material necessário
 
-1. Raspberry 4, 5.
+1. Raspberry Pi 4.
 2. Cartão SD com pelo menos 16 GB.
 3. Cabo para ligação Ethernet ao Raspberry.
-4. 1 ou 2 módulos de relés de 8 canais DC 5V
-5. Cabos jumper fêmea-fêmea para ligar o Raspberry ao(s) módulos de relés.
+4. 1 módulo de relés de 8 canais DC 5V (2 módulos se tiver mais de 8 máquinas).
+5. Cabos jumper fêmea-fêmea para ligar o Raspberry ao(s) módulo(s) de relés.
 
-<img src="./Relay.jpg" width="40%" alt="Exemplo de componente 4 - módulo de relés 8 canais">
+<img src="./Relay.jpg" width="40%" alt="Exemplo de módulo de relés de 8 canais">
 
-## Ligação dos relés para ativação das máquinas de lavar e secar
+## Ligação dos relés
 
-Nesta versao vamos usar apenas o módulo 2. A Tabela está abaixo 
+Com o Raspberry **desligado da corrente**, ligue cada entrada do módulo de relés ao pino com a mesma cor no mapa abaixo.
+Os números são a posição física dos pinos. Só os pinos a cor levam cabo.
 
+<img src="./pinos-raspberry.svg" width="460" alt="Mapa dos 40 pinos do Raspberry Pi 4 com os pinos usados por cada relé">
+
+| Cor | Ligação |
+|-----|---------|
+| Azul | Módulo 2, relés 2-1 a 2-8. É o módulo que se liga sempre. |
+| Verde | Módulo 1, relés 1-1 a 1-4, 1-6 e 1-8. Opcional, para mais de 8 máquinas. |
+| Vermelho | 5 V para o VCC de cada módulo: pino 4 para o módulo 2, pino 2 para o módulo 1. |
+| Azul escuro | GND para o GND de cada módulo: pino 9 para o módulo 2, pino 6 para o módulo 1. |
+
+**Até 8 máquinas, um módulo chega.** Ligue só o módulo 2 (10 cabos: 8 de sinal, mais 5 V e GND) e ignore os pinos a verde.
+O módulo 1 só é preciso a partir da nona máquina e leva 8 cabos, porque os relés 1-5 e 1-7 não são usados.
+
+**Qualquer relé pode servir qualquer máquina**, de lavar ou de secar. Com dois módulos, uma forma simples de organizar é usar
+um para as máquinas de lavar e o outro para as de secar ([exemplo](./rpi2.md)), mas é só uma sugestão. Ligue como for mais
+prático na loja e anote que relé ficou em cada máquina: é isso que vai indicar na dashboard ao configurar as máquinas.
+
+## Próximos passos
+
+- Instalar o software: siga as instruções de instalação por cartão SD em [gerir.pagalava.pt](https://gerir.pagalava.pt).
+- Depois de instalado, verifique a montagem com o [teste aos módulos de relés](../readme.md#testar-módulos-de-relés).
+
+## Referência: tabela de pinos e GPIO
 
 | Relay Module | Relay Index / Relay Number | GPIO Pin | Physical Pin |
 |--------------|----------------------------|----------|--------------|
@@ -39,17 +62,13 @@ Nesta versao vamos usar apenas o módulo 2. A Tabela está abaixo
 | Module 2     | 15 - Relay 2-7             | GPIO 19  | 35           |
 | Module 2     | 16 - Relay 2-8             | GPIO 26  | 37           |
 
-Module 2 VCC - Raspberry Pin 4 (VCC 5V).
-Module 2 GND - Raspberry Pin 9 (GND).
+| Alimentação | Pino do Raspberry |
+|-------------|-------------------|
+| Módulo 2 VCC | Pino 4 (5V) |
+| Módulo 2 GND | Pino 9 (GND) |
+| Módulo 1 VCC | Pino 2 (5V) |
+| Módulo 1 GND | Pino 6 (GND) |
 
+Por exemplo, o relé com índice 9, que é o primeiro do segundo módulo de relés, deverá ser ligado ao GPIO 12, que é o pino 32 do Raspberry.
 
-
-Por exemplo, o relés com indice 9, que é o primeiro do segundo módulo de relés, deverá ser ligado ao GPIO 12, que é o 32 pino do Raspberry.
-
-
-![Pinout do Raspberry 3-4 e ZeroW](./raspberry-pi-gpio-pinout.jpg)
-
-## Próximos passos
-
-- Instalar o software: siga as instruções de instalação por cartão SD em [gerir.pagalava.pt](https://gerir.pagalava.pt).
-- Depois de instalado, verifique a montagem com o [teste aos módulos de relés](../readme.md#testar-módulos-de-relés).
+![Pinout do Raspberry Pi](./raspberry-pi-gpio-pinout.jpg)
