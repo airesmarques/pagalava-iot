@@ -105,7 +105,7 @@ sudo systemctl restart receive_messages.service
 
 ## Testing Strategy
 
-1. **Test on bumblebee** (the old v1.3 device sample that only has systemd var):
+1. **Test on a preserved v1.3 device** (an old sample that only has the systemd variable):
    - Verify `inspect_environment` message reports the current value.
    - Send `bootstrap_env` message or manually create `.env`.
    - Verify `configurar` now lists the environment correctly.
@@ -124,4 +124,4 @@ sudo systemctl restart receive_messages.service
 ## Related Issues
 
 - GitHub issue / GitLab issue: Track bootstrap migration and testing on old devices.
-- Bumblebee is the preserved test sample for this migration path.
+- Keep one v1.3 device as the test sample for this migration path.
