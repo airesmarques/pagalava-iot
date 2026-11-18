@@ -33,6 +33,7 @@ default:
 # is tempted to skip them.
 # ---------------------------------------------------------------------------
 unit:
+  tags: [docker, amd64]
   stage: test
   image: python:3.12-slim
   before_script:
@@ -62,6 +63,7 @@ unit:
 # untested OS.
 # ---------------------------------------------------------------------------
 os-compatibility:
+  tags: [docker, amd64]
   stage: compatibility
   image: docker:27
   services:
@@ -87,6 +89,7 @@ os-compatibility:
 # site visit.
 # ---------------------------------------------------------------------------
 migration:
+  tags: [docker, amd64]
   stage: migration
   image: docker:27
   services:
