@@ -82,7 +82,9 @@ for deb in $OSES; do
       -v "$PWD/tests/startup_probe.py:/startup_probe.py:ro" -w /tmp \
       -e IOT_CONNECTION_STRING=offline-fixture "pagalava-startup-matrix:$deb" sh -c "
 set -u
-git clone -q /repo.git /device 2>/dev/null || { echo CLONEFAIL; exit 1; }
+# The read-only fixture belongs to the host user. Trust only this mount.
+git config --global --add safe.directory /repo.git
+git clone -q --no-local /repo.git /device || { echo CLONEFAIL; exit 1; }
 cd /device
 git checkout -q ${ref} 2>/tmp/co.err || { echo CHECKOUTFAIL; sed 's/^/    /' /tmp/co.err | head -3; exit 1; }
 echo BEFORE_SHA=\$(git rev-parse --short HEAD)
