@@ -143,47 +143,33 @@ class TestDispatch(unittest.TestCase):
         p2.assert_not_called()
 
 
+class TestUpgradeRestartIsHonest(unittest.TestCase):
+    def _run_upgrade(self, sudo_status):
+        from subprocess import CompletedProcess
+
+        attempts = [CompletedProcess([], 0, "Upgrade OK", ""),
+                    CompletedProcess([], sudo_status, "", "fixture sudo denial")]
+        with patch.object(rm.os, "geteuid", return_value=1000), \
+             patch.object(rm.subprocess, "run", side_effect=attempts) as run, \
+             self.assertLogs(level="WARNING") as logs:
+            result = rm.message_upgrade()
+        return result, run, "\n".join(logs.output)
+
+    def test_requests_restart_non_interactively(self):
+        result, run, logs = self._run_upgrade(sudo_status=0)
+        self.assertTrue(result)
+        restart = run.call_args_list[1]
+        self.assertEqual(restart.args[0], ["/usr/bin/sudo", "-n", "/usr/bin/systemctl",
+                                          "restart", "receive_messages.service"])
+        self.assertIn("timeout", restart.kwargs)
+        self.assertIn("cannot confirm", logs)
+
+    def test_reports_failed_restart(self):
+        result, _, logs = self._run_upgrade(sudo_status=1)
+        self.assertFalse(result)
+        self.assertIn("Still running firmware", logs)
+        self.assertIn("fixture sudo denial", logs)
+
+
 if __name__ == "__main__":
     unittest.main()
-
-
-class TestUpgradeRestartIsHonest(unittest.TestCase):
-    """
-    message_upgrade used to fire the restart and return True regardless. On a
-    device without passwordless sudo the restart failed silently, so the
-    dashboard reported a successful upgrade while the device kept running the
-    old code — indistinguishable, from the cloud, from the upgrade not having
-    happened at all.
-    """
-
-    def _run_upgrade(self, sudo_ok):
-        import subprocess as sp
-        completed = MagicMock()
-        completed.returncode = 0 if sudo_ok else 1
-        with patch.object(rm.os.path, "exists", return_value=True), \
-             patch.object(rm.subprocess, "run", return_value=completed) as run, \
-             patch.object(rm.subprocess, "Popen") as popen:
-            # The git pull itself is the first subprocess.run call; make both
-            # succeed so only the sudo probe decides the outcome.
-            rm.message_upgrade()
-        return run, popen
-
-    def test_restarts_when_sudo_is_available(self):
-        _, popen = self._run_upgrade(sudo_ok=True)
-        popen.assert_called_once()
-        args = popen.call_args[0][0]
-        self.assertIn("restart", args)
-        self.assertIn("receive_messages.service", args)
-
-    def test_does_not_pretend_to_restart_without_sudo(self):
-        # The important half: no restart attempted, so nothing silently fails.
-        _, popen = self._run_upgrade(sudo_ok=False)
-        popen.assert_not_called()
-
-    def test_probes_sudo_non_interactively(self):
-        # -n matters: without it sudo would wait for a password on a service
-        # that has no tty, and hang instead of failing.
-        run, _ = self._run_upgrade(sudo_ok=True)
-        probes = [c for c in run.call_args_list if "-n" in (c[0][0] if c[0] else [])]
-        self.assertTrue(probes, "sudo probe must use -n")
-        self.assertIn("timeout", probes[0][1])

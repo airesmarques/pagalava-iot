@@ -53,3 +53,12 @@ in `device.sh` and `probe.py`. Rebuild the images and add the label to
 add it to the target loop in `matrix.sh` to cover both OSes and sudo
 policies. Review the assertions when a target is expected to change the
 checkout, restart, or import behavior.
+
+Run the candidate matrix against the current branch head with
+`tests/field_upgrade/matrix.sh field-upgrade-logs HEAD`. It also probes
+the historical reboot handlers and compares Bash's open script descriptor
+with the checkout path immediately after Git replaces the updater. The 1.7.1
+fixtures additionally run the 1.10 handler against local 1.11 and broken
+commits, test the credential sources, and compare a mocked relay trace with
+the published 1.9 handler. Git and the sudo/restart stand-ins are confined
+to disposable, network-disabled containers.
