@@ -41,7 +41,7 @@ printf -v dev 'HostName=%s;DeviceId=%s;SharedAccessKey=%s' fixture-dev.example.i
 printf -v prod 'HostName=%s;DeviceId=%s;SharedAccessKey=%s' fixture.example.invalid fixture Zml4dHVyZQ==
 printf 'IOT_CONNECTION_STRING="%s"\n' "$dev" > "$original/.env.dev"
 ln -s .env.dev "$original/.env"
-printf 'IOT_CONNECTION_STRING=%s\n' "$dev" > "$fixture/environment"
+printf 'PATH=/fixture/.venv/bin "IOT_CONNECTION_STRING=%s"\n' "$dev" > "$fixture/environment"
 cat > "$fixture/standins" <<'STUB'
 sudo() {
     [[ $1 == -n ]] || return 1
@@ -117,6 +117,7 @@ bench publish "$start" release/fixture
 bench status > "$fixture/output"
 grep -Fx "Directory: $checkout" "$fixture/output"
 grep -Fx 'State: active' "$fixture/output"
+grep -Fx 'Invocation: 11111111111111111111111111111111' "$fixture/output"
 grep -Fx "Checkout commit: $start" "$fixture/output"
 grep -Fx 'Running version: 1.7' "$fixture/output"
 if grep -Eq 'HostName=|SharedAccessKey=' "$fixture/output"; then exit 1; fi
@@ -133,7 +134,7 @@ printf 'IOT_CONNECTION_STRING=%s\n' "$prod" > "$fixture/environment"
 reject 'DEV hub' prepare 1.7
 reject 'DEV hub' use 1.7
 reject 'DEV hub' publish "$target"
-printf 'IOT_CONNECTION_STRING=%s\n' "$dev" > "$fixture/environment"
+printf 'PATH=/fixture/.venv/bin "IOT_CONNECTION_STRING=%s"\n' "$dev" > "$fixture/environment"
 printf 'IOT_CONNECTION_STRING=%s\n' "$prod" > "$checkout/.env"
 reject 'DEV hub' use 1.7
 cp "$original/.env" "$checkout/.env"

@@ -80,8 +80,10 @@ fi
 # Accept the stock installer/firstboot format. Check both sources because
 # historical versions differ in precedence. Keep all parser inputs off argv.
 dev_identity() {
-    local value=${1#\"}
-    value=${value%\"}
+    local value=$1
+    if [[ $value == \"*\" ]]; then
+        value=${value:1:-1}
+    fi
     [[ $value =~ ^HostName=([a-zA-Z0-9.-]+)\;DeviceId=[a-zA-Z0-9_.:%+-]+\;SharedAccessKey=[a-zA-Z0-9+/=]+$ &&
         ${BASH_REMATCH[1],,} == *-dev* ]]
 }
@@ -93,11 +95,15 @@ check_identity() {
     done
     unit_env=$(query Environment | awk '
         /IOT_CONNECTION_STRING/ {
-            for (i = 1; i <= NF; i++)
-                if ($i ~ /^IOT_CONNECTION_STRING=/) {
+            for (i = 1; i <= NF; i++) {
+                assignment = $i
+                if (assignment ~ /^".*"$/)
+                    assignment = substr(assignment, 2, length(assignment) - 2)
+                if (assignment ~ /^IOT_CONNECTION_STRING=/) {
                     count++
-                    value = substr($i, length("IOT_CONNECTION_STRING=") + 1)
-                } else if ($i ~ /IOT_CONNECTION_STRING/) invalid = 1
+                    value = substr(assignment, length("IOT_CONNECTION_STRING=") + 1)
+                } else if (assignment ~ /IOT_CONNECTION_STRING/) invalid = 1
+            }
         }
         END { if (count > 1 || invalid) exit 1; print value }
     ') || fail "Cannot validate the service identity."
@@ -137,6 +143,7 @@ if [[ $action == status ]]; then
     fi
     invocation=$(query InvocationID)
     if [[ $invocation =~ ^[[:xdigit:]]{32}$ ]]; then
+        printf 'Invocation: %s\n' "$invocation"
         version=$(journalctl --no-pager -o cat "_SYSTEMD_INVOCATION_ID=$invocation" 2>/dev/null |
             sed -nE 's/^.*Running with version: ([0-9]+(\.[0-9]+)+)$/\1/p' | tail -n 1) || version=
     fi
