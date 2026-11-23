@@ -109,6 +109,7 @@ migration:
       allow_failure: true
 
 field-upgrade:
+  tags: [docker, amd64]
   stage: migration
   image: docker:27
   services:
