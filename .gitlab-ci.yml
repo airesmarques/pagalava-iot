@@ -45,9 +45,8 @@ unit:
     - pip install -q pytest azure-iot-device python-dotenv requests
   script:
     - python -m pytest tests/ -q
-    # test_firstboot.sh and test_upgrade_rollback.sh exercise 1.8 features
-    # (first-boot provisioning, the channel-aware update script). This line of
-    # firmware has neither, so they are not run here. They exist on release/1.8.
+    - bash tests/test_firstboot.sh
+    - bash tests/test_upgrade_rollback.sh
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH'

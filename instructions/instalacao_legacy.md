@@ -57,6 +57,10 @@ Ative o serviço SSH. Pode usar password para autenticação ou uma chave SSH (r
 ## 2. Configuração do sistema PagaLava
 Localize o Raspberry na sua rede, identificando o endereço IP, e ligue-se ao Raspberry por SSH.
 
+Este é o procedimento clássico e continua a funcionar exactamente como sempre.
+Se tiver copiado um ficheiro de instalação para o cartão, o script encontra-o e
+não pergunta nada; caso contrário pede a connection string como antes.
+
 Não é necessário atualizar o sistema operativo, os updates serão executados no script de instalação.
 
 ### Debian 12 (Bookworm) - Recomendado

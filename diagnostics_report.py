@@ -26,9 +26,11 @@ report.
 Python 3.9 compatible: no PEP 604 annotations anywhere in this file, or in
 anything the service imports. See tests/test_python39_compat.py.
 """
+import json
 import logging
 import os
 import subprocess
+import sys
 
 SERVICE_UNIT = "/etc/systemd/system/receive_messages.service"
 SUDOERS_RULE = "/etc/sudoers.d/pagalava-restart"
@@ -55,7 +57,6 @@ def _os_release():
 
 
 def _python_version():
-    import sys
     return "%d.%d.%d" % sys.version_info[:3]
 
 
@@ -77,7 +78,6 @@ def _git(*args):
 
 
 def _firmware_version():
-    import json
     with open(os.path.join(_repo_dir(), "version.json"), "r", encoding="utf-8") as handle:
         return json.load(handle).get("version")
 
@@ -157,6 +157,57 @@ def _install_mode():
     return "image" if os.path.islink(os.path.join(_repo_dir(), ".env")) else "user"
 
 
+def _config_path():
+    return os.path.join(_repo_dir(), "config.json")
+
+
+def _has_config():
+    """
+    Whether this device has a relay map at all.
+
+    A device without one fails EVERY activation with
+    MachineNotConfiguredException, and message_activate never reports failures
+    home — so the device looks healthy from the dashboard while the laundromat
+    opens nothing. Nothing else in the fleet reports this, which is why a
+    freshly imaged Pi could sit unconfigured and look fine.
+    """
+    return "yes" if os.path.exists(_config_path()) else "no"
+
+
+def _config_machines():
+    """How many machines the relay map covers. '0' is a real and alarming answer."""
+    with open(_config_path(), "r", encoding="utf-8") as handle:
+        return str(len(json.load(handle)))
+
+
+def time_synced():
+    """
+    Whether the clock has been corrected since boot.
+
+    Public because ReceiveMessages waits on it before its first connection
+    attempt; this is the single place that decides what "synced" means.
+
+    A Pi has no RTC, and a wrong clock breaks the device in two stages. Far out,
+    the TLS handshake fails with "certificate is not yet valid". Closer in it
+    still fails, because the IoT Hub SAS token is time-based: the 1.9 image test
+    booted ~1h43m behind, passed certificate validation, and was refused with
+    "Connection Refused: not authorised". Seeding the clock at build time shrank
+    the skew but did not close the gap.
+
+    Returns "yes", "no", or None when the question cannot be answered.
+    """
+    result = subprocess.run(
+        ["/usr/bin/timedatectl", "show", "-p", "NTPSynchronized", "--value"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        timeout=10,
+    )
+    if result.returncode != 0:
+        return None
+    value = result.stdout.decode("utf-8", "replace").strip().lower()
+    return "yes" if value == "yes" else "no"
+
+
 def _disk_free_mb():
     stat = os.statvfs(_repo_dir())
     return int(stat.f_bavail * stat.f_frsize / (1024 * 1024))
@@ -165,6 +216,25 @@ def _disk_free_mb():
 def _uptime_seconds():
     with open("/proc/uptime", "r", encoding="utf-8") as handle:
         return int(float(handle.read().split()[0]))
+
+
+# Seconds spent waiting for the clock at startup, set by ReceiveMessages once it
+# knows. Module state rather than a parameter so send()'s signature is unchanged.
+#
+# This is the ONLY way a slow-clock site becomes visible. The obvious signal
+# cannot work: the minute token is derived from this device's own clock, so a
+# device that is skewed has its report rejected with 401 and can never tell us
+# "time_synced: no". This value is sent afterwards, when the clock is right.
+_clock_wait_seconds = None
+
+
+def set_clock_wait_seconds(seconds):
+    """Record how long startup waited for the clock. Never raises."""
+    global _clock_wait_seconds
+    try:
+        _clock_wait_seconds = int(seconds)
+    except (TypeError, ValueError):
+        _clock_wait_seconds = None
 
 
 def collect():
@@ -201,6 +271,10 @@ def collect():
         ),
         "disk_free_mb": _safe(_disk_free_mb),
         "uptime_seconds": _safe(_uptime_seconds),
+        "has_config": _safe(_has_config),
+        "config_machines": _safe(_config_machines),
+        "time_synced": _safe(time_synced),
+        "clock_wait_seconds": _clock_wait_seconds,
     }
 
     # Drop anything that could not be gathered, so the backend stores facts
