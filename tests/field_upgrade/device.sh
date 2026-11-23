@@ -66,7 +66,7 @@ as_device .venv/bin/python -m pip freeze
 service_environment=()
 if [[ $install_type == image ]]; then
     as_device git -C "$remote" update-ref refs/heads/release/1.9 "$target"
-    echo 'IOT_CONNECTION_STRING=offline-fixture' | as_device tee .env >/dev/null
+    as_device /bin/bash -c 'printf "IOT_CONNECTION_STRING=offline-fixture\n" > .env'
 else
     as_device git -C "$remote" update-ref refs/heads/main "$target"
     service_environment=(IOT_CONNECTION_STRING=offline-fixture)
