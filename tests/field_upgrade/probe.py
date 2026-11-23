@@ -201,7 +201,8 @@ def second_hop(remote, policy, version, revision):
         git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
             "commit", "-qam", "Temporary fixture")
         target = head()
-        git("push", "--force", remote, "HEAD:refs/heads/main")
+        git(f"--git-dir={remote}", "fetch", "--quiet", "--no-tags", "--force",
+            str(Path.cwd()), "HEAD:refs/heads/main")
         git("reset", "--hard", initial)
         return target
 

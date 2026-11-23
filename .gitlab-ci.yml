@@ -41,12 +41,13 @@ unit:
     # because they cannot be installed off a Pi.
     # git is needed by the upgrade-rollback test, which builds a throwaway
     # upstream and device clone. python:*-slim does not ship it.
-    - apt-get update -qq && apt-get install -y -qq git >/dev/null
+    - apt-get update -qq && apt-get install -y -qq git shellcheck python3-venv >/dev/null
     - pip install -q pytest azure-iot-device python-dotenv requests
   script:
     - python -m pytest tests/ -q
     - bash tests/test_firstboot.sh
     - bash tests/test_upgrade_rollback.sh
+    - bash tests/test_hardware_upgrade.sh
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH'
@@ -102,3 +103,33 @@ migration:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - when: manual
       allow_failure: true
+
+field-upgrade:
+  stage: migration
+  image: docker:27
+  services:
+    - docker:27-dind
+  allow_failure: false
+  parallel:
+    matrix:
+      - DEBIAN: ["11", "12", "13"]
+  script:
+    - apk add --no-cache bash git >/dev/null
+    - git config --global --add safe.directory "$CI_PROJECT_DIR"
+    - bash tests/field_upgrade/matrix.sh "field-upgrade-logs/$DEBIAN" "$CI_COMMIT_SHA" "$DEBIAN"
+  artifacts:
+    when: always
+    paths:
+      - field-upgrade-logs/
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH =~ /^release\//'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH'
+      changes:
+        - "*.py"
+        - "*.sh"
+        - "*.json"
+        - "*.service"
+        - requirements*.txt
+        - tests/**/*
+        - .gitlab-ci.yml
+        - .gitlab/**/*
