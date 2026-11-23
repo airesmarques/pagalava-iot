@@ -58,7 +58,7 @@ if ! command -v docker >/dev/null 2>&1; then
     exit 0
 fi
 
-FAKE_CS="HostName=fake.azure-devices.net;DeviceId=rpiCI;SharedAccessKey=Y2ktdGVzdC1rZXktbm90LXJlYWw="
+FAKE_CS=offline-fixture
 pass=0; fail=0
 
 for row in $MATRIX; do
@@ -66,21 +66,14 @@ for row in $MATRIX; do
     deb="${row%%:*}"; img="${row#*:}"
     echo "=== Debian ${deb} (${img}) ==="
 
-    out="$(docker run --rm -i -v "$PWD:/src:ro" -w /tmp \
-        -e RIG_DEBIAN="$deb" -e IOT_CONNECTION_STRING="$FAKE_CS" "$img" sh -c '
+    if ! docker image inspect "pagalava-startup-matrix:$deb" >/dev/null 2>&1 &&
+       ! bash tests/matrix-image.sh "$deb"; then
+        echo "  FAIL  Debian $deb fixture could not be built"
+        fail=$((fail+1)); continue
+    fi
+    out="$(docker run --rm --network none -i -v "$PWD:/src:ro" -w /tmp \
+        -e IOT_CONNECTION_STRING="$FAKE_CS" "pagalava-startup-matrix:$deb" sh -c '
 set -u
-export DEBIAN_FRONTEND=noninteractive
-if [ "$RIG_DEBIAN" = 11 ]; then
-    sed -i "/^deb /d; s|^# deb http://snapshot.debian.org/|deb [check-valid-until=no] http://snapshot.debian.org/|" /etc/apt/sources.list
-fi
-apt-get update -qq >/dev/null 2>&1
-apt-get install -y -qq python3 python3-pip python3-venv >/dev/null 2>&1
-PY=python3
-# Trixie and Bookworm refuse system-wide pip installs (PEP 668); a venv with
-# system site packages is what the device setup scripts do anyway.
-$PY -m venv --system-site-packages /venv >/dev/null 2>&1
-/venv/bin/pip install -q azure-iot-device python-dotenv requests >/dev/null 2>&1 || {
-    echo "PIPFAIL"; exit 3; }
 # Hardware libraries are stubbed: CI has no GPIO. This is about whether the
 # code runs on this interpreter, not about the board.
 mkdir -p /stub/RPi

@@ -316,7 +316,9 @@ def relay(version):
         with patch.object(ops, "control_relay", side_effect=lambda *args: calls.append(("relay", *args))), \
              patch.object(ops.time, "sleep", side_effect=lambda seconds: calls.append(("sleep", seconds))), \
              patch.object(ops.GPIO, "LOW", 0), patch.object(ops.GPIO, "HIGH", 1):
-            service.message_activate({"machine_id": "7", "number_of_impulses": 2})
+            data = json.dumps({"msg_type": "activate", "machine_id": "7",
+                               "number_of_impulses": 2}).encode()
+            service.message_handler(SimpleNamespace(data=data))
     finally:
         config.unlink()
     assert len(calls) == 15, calls

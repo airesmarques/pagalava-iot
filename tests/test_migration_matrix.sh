@@ -31,8 +31,6 @@ v1.7:1.7
 1fefd13:1.8-rollback
 "
 
-declare -A IMG=( [11]=debian:bullseye-slim [12]=debian:bookworm-slim [13]=debian:trixie-slim )
-
 command -v docker >/dev/null 2>&1 || { echo "  skip  docker not available"; exit 0; }
 
 TARGET_SHA="$(git rev-parse "$TARGET")"
@@ -70,38 +68,33 @@ if [ -n "$missing" ]; then
 fi
 
 for deb in $OSES; do
-  img="${IMG[$deb]:-}"
-  [ -n "$img" ] || { echo "  ?? unknown Debian $deb"; continue; }
+  if ! docker image inspect "pagalava-startup-matrix:$deb" >/dev/null 2>&1 &&
+     ! bash tests/matrix-image.sh "$deb"; then
+    echo "  FAIL  Debian $deb fixture could not be built"
+    fail=$((fail+1)); continue
+  fi
   for row in $FROM_VERSIONS; do
     [ -n "$row" ] || continue
     ref="${row%%:*}"; label="${row##*:}"
     printf "  Debian %-2s  %-4s -> %-5s : " "$deb" "$label" "$TARGET_LABEL"
 
-    out="$(docker run --rm -v "$BARE:/repo.git:ro" -v "$PWD/tests/startup_probe.py:/startup_probe.py:ro" -w /tmp \
-      -e RIG_DEBIAN="$deb" -e IOT_CONNECTION_STRING="HostName=fake.azure-devices.net;DeviceId=rpiCI;SharedAccessKey=Y2ktdGVzdA==" \
-      "$img" sh -c "
+    out="$(docker run --rm --network none -v "$BARE:/repo.git:ro" \
+      -v "$PWD/tests/startup_probe.py:/startup_probe.py:ro" -w /tmp \
+      -e IOT_CONNECTION_STRING=offline-fixture "pagalava-startup-matrix:$deb" sh -c "
 set -u
-export DEBIAN_FRONTEND=noninteractive
-if [ "\$RIG_DEBIAN" = 11 ]; then
-    sed -i '/^deb /d; s|^# deb http://snapshot.debian.org/|deb [check-valid-until=no] http://snapshot.debian.org/|' /etc/apt/sources.list
-fi
-apt-get update -qq >/dev/null 2>&1
-apt-get install -y -qq python3 python3-venv git >/dev/null 2>&1
 git clone -q /repo.git /device 2>/dev/null || { echo CLONEFAIL; exit 1; }
 cd /device
 git checkout -q ${ref} 2>/tmp/co.err || { echo CHECKOUTFAIL; sed 's/^/    /' /tmp/co.err | head -3; exit 1; }
 echo BEFORE_SHA=\$(git rev-parse --short HEAD)
 echo BEFORE_VER=\$(sed -n 's/.*\"version\"[^\"]*\"\([0-9.]*\)\".*/\\1/p' /device/version.json | head -1)
 echo BEFORE_HAS_FIRSTBOOT=\$([ -f /device/firstboot.sh ] && echo yes || echo no)
-python3 -m venv --system-site-packages /venv >/dev/null 2>&1
-/venv/bin/pip install -q azure-iot-device python-dotenv requests >/dev/null 2>&1 || { echo PIPFAIL; exit 1; }
 mkdir -p /stub/RPi
 printf 'BCM=BOARD=OUT=IN=HIGH=LOW=0\ndef setmode(*a,**k): pass\ndef setwarnings(*a,**k): pass\ndef setup(*a,**k): pass\ndef output(*a,**k): pass\ndef input(*a,**k): return 0\ndef cleanup(*a,**k): pass\n' > /stub/RPi/GPIO.py
 : > /stub/RPi/__init__.py
 printf 'class SpiDev:\n    def open(self,*a,**k): pass\n    def xfer2(self,*a,**k): return []\n    def close(self,*a,**k): pass\n' > /stub/spidev.py
 export PYTHONPATH=/stub:/device
 # The migration itself: exactly what update_pagalava.sh does.
-git fetch -q origin ${TARGET_SHA} 2>/dev/null
+git fetch -q origin ${TARGET_SHA} 2>/dev/null || { echo FETCHFAIL; exit 1; }
 git reset --hard -q ${TARGET_SHA} 2>/dev/null || { echo RESETFAIL; exit 1; }
 echo AFTER_SHA=\$(git rev-parse --short HEAD)
 echo AFTER_HAS_FIRSTBOOT=\$([ -f /device/firstboot.sh ] && echo yes || echo no)

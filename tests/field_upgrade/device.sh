@@ -69,7 +69,16 @@ echo "== Historical handler =="
 service /rig/probe.py upgrade "$revision" "$source" "$target" "$policy" "$os"
 echo "== Simulated restart in a fresh interpreter =="
 service -c 'import sys; sys.path.append("/rig"); import probe; probe.restart()'
-if [[ $(as_device git --git-dir="$remote" show "${target}:version.json" 2>/dev/null | /usr/bin/python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])') == 1.10 && $revision == 0d02b65 ]]; then
+target_version=$(as_device git --git-dir="$remote" show "${target}:version.json" |
+    /usr/bin/python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')
+if [[ $target_version == 1.10 && $revision == 1fefd13 ]]; then
+    # One manual fast-forward bypasses the old updater's incomplete PATH.
+    as_device git pull --ff-only origin main
+    [[ $(as_device git rev-parse HEAD) == "$target" ]]
+    echo "MANUAL FAST-FORWARD reached $target"
+    service -c 'import sys; sys.path.append("/rig"); import probe; probe.restart()'
+fi
+if [[ $target_version == 1.10 && $revision == 0d02b65 ]]; then
     echo "== Unified updater second hop =="
     service /rig/probe.py second_hop "$remote" "$policy"
     service /rig/probe.py credential
