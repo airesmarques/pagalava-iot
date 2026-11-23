@@ -41,7 +41,8 @@ unit:
     # because they cannot be installed off a Pi.
     # git is needed by the upgrade-rollback test, which builds a throwaway
     # upstream and device clone. python:*-slim does not ship it.
-    - apt-get update -qq && apt-get install -y -qq git shellcheck python3-venv >/dev/null
+    # sudo gives the bench fixture real root-owned drop-in permissions.
+    - apt-get update -qq && apt-get install -y -qq git shellcheck python3-venv sudo >/dev/null
     - pip install -q pytest azure-iot-device python-dotenv requests
   script:
     - python -m pytest tests/ -q

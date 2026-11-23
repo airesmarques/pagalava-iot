@@ -8,9 +8,12 @@ shellcheck "$tool" "$0"
 
 unitdir=/etc/systemd/system/receive_messages.service.d
 [[ ! -e $unitdir && ! -L $unitdir ]] || { echo "A real service drop-in directory exists."; exit 2; }
-mkdir "$unitdir"
 fixture=$(mktemp -d)
-trap 'rm -rf "$fixture" "$unitdir"' EXIT
+sudoers=/etc/sudoers.d/bench-upgrade-fixture
+[[ ! -e $sudoers && ! -L $sudoers ]] || exit 2
+trap 'rm -rf "$fixture" "$unitdir"; rm -f "$sudoers"' EXIT
+install -m 0440 /dev/null "$sudoers"
+echo 'nobody ALL=(root) NOPASSWD: ALL' > "$sudoers"
 home=$fixture/home
 original=$home/live
 kit=$fixture/kit
@@ -45,8 +48,12 @@ printf 'PATH=/fixture/.venv/bin "IOT_CONNECTION_STRING=%s"\n' "$dev" > "$fixture
 cat > "$fixture/standins" <<'STUB'
 sudo() {
     [[ $1 == -n ]] || return 1
-    shift
-    "$@"
+    if [[ $2 == systemctl ]]; then
+        shift 2
+        systemctl "$@"
+    else
+        command sudo "$@"
+    fi
 }
 systemctl() {
     case "$1" in
@@ -57,14 +64,14 @@ systemctl() {
                 --property=WorkingDirectory) cat "$FIXTURE/live" ;;
                 --property=Environment) cat "$FIXTURE/environment" ;;
                 --property=EnvironmentFiles|--property=PassEnvironment|--property=UnsetEnvironment) ;;
-                --property=DropInPaths) if [[ -f $DROPIN ]]; then echo "$DROPIN"; fi ;;
+                --property=DropInPaths) if sudo -n test -f "$DROPIN"; then echo "$DROPIN"; fi ;;
                 --property=ActiveState) echo active ;;
                 --property=InvocationID) echo 11111111111111111111111111111111 ;;
                 *) return 1 ;;
             esac ;;
         daemon-reload)
-            if [[ -f $DROPIN ]]; then
-                sed -n 's/^WorkingDirectory=//p' "$DROPIN" > "$FIXTURE/live"
+            if sudo -n test -f "$DROPIN"; then
+                sudo -n sed -n 's/^WorkingDirectory=//p' "$DROPIN" > "$FIXTURE/live"
             else
                 sed -n 's/^WorkingDirectory=//p' "$FIXTURE/unit" > "$FIXTURE/live"
             fi ;;
@@ -80,7 +87,7 @@ journalctl() {
     cat "$FIXTURE/environment"
 }
 STUB
-chown -R nobody "$fixture" "$unitdir"
+chown -R nobody "$fixture"
 bench() {
     runuser -u nobody -- env HOME="$home" FIXTURE="$fixture" DROPIN="$dropin" \
         BASH_ENV="$fixture/standins" "$tool" "$@"
@@ -109,6 +116,9 @@ reject 'requires --yes' prepare 1.7
 bench --yes prepare 1.7
 bench use 1.7
 [[ $(cat "$fixture/live") == "$checkout" ]]
+[[ $(stat -c '%u:%a' "$unitdir") == 0:755 ]]
+[[ $(stat -c '%u:%a' "$dropin") == 0:644 ]]
+if grep -Eq 'HostName=|SharedAccessKey=' "$dropin"; then exit 1; fi
 reject 'active case' --yes prepare 1.7
 bench publish "$target"
 bench publish "$start" release/fixture
@@ -121,8 +131,33 @@ grep -Fx 'Invocation: 11111111111111111111111111111111' "$fixture/output"
 grep -Fx "Checkout commit: $start" "$fixture/output"
 grep -Fx 'Running version: 1.7' "$fixture/output"
 if grep -Eq 'HostName=|SharedAccessKey=' "$fixture/output"; then exit 1; fi
-bench restore
-[[ ! -e $dropin && $(cat "$fixture/live") == "$original" ]]
+restore_case() {
+    local label=$1 before
+    before=$(wc -l < "$fixture/events")
+    echo "Restore case: $label"
+    bench restore
+    [[ ! -e $dropin && $(cat "$fixture/live") == "$original" ]]
+    [[ $(wc -l < "$fixture/events") == $((before + 1)) ]]
+}
+
+chmod 0700 "$unitdir"
+chmod 0600 "$dropin"
+[[ -f $dropin ]]
+runuser -u nobody -- test ! -e "$dropin"
+restore_case 'legacy root-only drop-in'
+[[ ! -e $unitdir ]]
+
+mkdir -m 0700 "$unitdir"
+touch "$unitdir/unrelated.conf"
+restore_case 'drop-in absent, unrelated file present'
+[[ -f $unitdir/unrelated.conf ]]
+rm "$unitdir/unrelated.conf"
+
+restore_case 'drop-in directory empty'
+[[ ! -e $unitdir ]]
+
+restore_case 'drop-in directory absent'
+[[ ! -e $unitdir ]]
 bench prepare 1.9-image
 image=$home/fwtest/run/1.9-image
 [[ ! -e $image/.git ]]
@@ -163,12 +198,17 @@ ln -s "$home/archive" "$origin/refs/heads/outside"
 reject 'Unsafe symlink' publish "$target"
 rm "$origin/refs/heads/outside"
 
+mkdir -m 0700 "$unitdir"
 ln -s "$home/archive/keep" "$dropin"
 reject 'Unsafe systemd drop-in' use 1.7
+reject 'Unsafe systemd drop-in' restore
 rm "$dropin"
 echo unrelated > "$dropin"
 reject 'already in use' use 1.7
+reject 'already in use' restore
+[[ $(cat "$dropin") == unrelated ]]
 rm "$dropin"
+rmdir "$unitdir"
 touch "$fixture/restart-fails"
 if bench use 1.7; then
     echo 'Unexpected successful restart' >&2

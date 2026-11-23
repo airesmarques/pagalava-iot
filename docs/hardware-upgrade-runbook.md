@@ -2,7 +2,7 @@
 
 Use the Raspberry Pi 4 bench Pi with Debian 12 and Python 3.11. The service
 user must have passwordless sudo for the service restart, systemd reload,
-and installation and removal of the managed drop-in. Use a dedicated DEV
+and inspection, installation and removal of the managed drop-in. Use a dedicated DEV
 hub identity, a known test relay and load, and an idle service. Coordinate
 with other operators so no one sends messages while switching fixtures. Run
 one case at a time. Leave the original checkout, unit, home archive folders
@@ -63,12 +63,15 @@ bench="$HOME/fwtest/kit/tests/hardware/upgrade_matrix/bench.sh"
 ## Execute each case
 
 For each row printed by `list`, set `CASE` and `START` to that row's
-case and commit, using the table below to track the run. The `--yes`
+case and commit before running the commands. The example selects 1.7 and
+looks up its starting commit from `list`. The `--yes`
 flag permits a backwards move of fixture `main` between cases. For a
 repeat, use `"$bench" --yes prepare "$CASE"` after restoring the original
 service. A prepared case that is live cannot be replaced.
 
 ```sh
+CASE=1.7
+START=$("$bench" list | awk -F '\t' -v case_id="$CASE" '$1 == case_id {print $2}')
 "$bench" restore
 "$bench" --yes publish "$START"
 "$bench" prepare "$CASE"
@@ -139,7 +142,8 @@ az iot device c2d-message send -n <dev hub> -d <device id> --data '{"msg_type":"
 Publish `"$bench" publish "$ONWARD"` on the Pi, send the same upgrade
 message from the operator's machine, wait, then run `"$bench" status`.
 Verify the onward SHA, a new service invocation and version 1.11, and
-confirm a DEV response. Restore before proceeding to the next case.
+confirm a DEV response. End every case, including a stopped or failed
+case, with a verified restore and status before proceeding.
 
 ```sh
 "$bench" restore
@@ -152,6 +156,34 @@ as well. Confirm the original directory, active state, baseline version
 and DEV response. Preserve the original unit and the archive. Prepared
 fixtures remain under `~/fwtest/run` for inspection or a confirmed repeat.
 
+### If restore fails
+
+As the service user, confirm that the first line identifies the bench
+helper before removing its one override. If the file is already absent,
+continue with directory cleanup. Leave a nonempty drop-in directory in
+place.
+
+```sh
+dropdir=/etc/systemd/system/receive_messages.service.d
+sudo -n head -n 1 -- "$dropdir/90-fwtest.conf"
+# Expected: # Managed by the bench firmware upgrade script
+```
+
+Once you have confirmed the marker or confirmed the file is absent, run:
+
+```sh
+sudo -n rm -f -- "$dropdir/90-fwtest.conf"
+if sudo -n test -d "$dropdir"; then
+  sudo -n rmdir --ignore-fail-on-non-empty -- "$dropdir"
+fi
+sudo -n systemctl daemon-reload
+sudo -n systemctl restart receive_messages.service
+"$bench" status
+```
+
+Verify that status shows the original WorkingDirectory, active state and
+baseline version. Confirm a DEV response and record the manual recovery.
+
 ## Results sheet
 
 Record date, target and onward SHAs, OS/Python versions, operator and
@@ -159,12 +191,15 @@ redacted evidence references.
 
 | Case | Start SHA/version verified | First hop matched table | Manual action | 1.10 relay observed | 1.11/DEV verified | Restore verified |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1.3 | | | | | | |
-| 1.7 | | | | | | |
+| 1.3 | | Yes, checkout moved while the process kept running 1.3 | External restart brought up 1.10 | Pulsed | Onward hop worked | Helper failed; override removed manually |
+| 1.7 | | Yes, 1.10 restarted automatically | None for upgrade | Pulsed | Onward hop worked | Helper failed; override removed manually |
 | 1.7.1 | | | | | | |
-| 1.8-plain | | | | | | |
-| 1.8-rollback | | | | | | |
-| 1.9-image | | | | | | |
+| 1.8-plain | Pending hardware run | | | | | |
+| 1.8-rollback | Pending hardware run | | | | | |
+| 1.9-image | Pending hardware run | | | | | |
+
+The recorded 1.3 and 1.7 runs were on the bench Pi with Debian 12 and
+Python 3.11.
 
 The bench can prove real systemd process replacement, DEV hub delivery
 and physical GPIO response. The 1.9 snapshot exercises the updater's

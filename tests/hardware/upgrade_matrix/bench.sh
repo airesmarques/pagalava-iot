@@ -46,9 +46,14 @@ safe_dir() {
         fail "Unsafe directory in fwtest."
 }
 managed_dropin() {
-    [[ ! -L $dropdir && ! -L $dropin ]] || fail "Unsafe systemd drop-in path."
-    if [[ -e $dropin ]]; then
-        [[ -f $dropin && $(head -n 1 "$dropin") == "$marker" ]] ||
+    sudo -n test ! -L "$dropdir" || fail "Unsafe systemd drop-in path."
+    sudo -n test ! -L "$dropin" || fail "Unsafe systemd drop-in path."
+    if ! sudo -n test ! -e "$dropdir"; then
+        sudo -n test -d "$dropdir" || fail "Unsafe systemd drop-in path."
+    fi
+    if ! sudo -n test ! -e "$dropin"; then
+        sudo -n test -f "$dropin" || fail "The drop-in path is already in use."
+        [[ $(sudo -n head -n 1 -- "$dropin") == "$marker" ]] ||
             fail "The drop-in path is already in use."
     fi
 }
@@ -69,8 +74,9 @@ restart_at() {
 
 if [[ $action == restore ]]; then
     managed_dropin
-    if [[ -e $dropin ]]; then
-        sudo -n rm -f -- "$dropin"
+    sudo -n rm -f -- "$dropin"
+    if sudo -n test -d "$dropdir"; then
+        sudo -n rmdir --ignore-fail-on-non-empty -- "$dropdir"
     fi
     restart_at "$original"
     printf 'Restored %s\n' "$original"
@@ -207,13 +213,15 @@ if [[ $action == use ]]; then
     managed_dropin
     dropins=$(query DropInPaths) || fail "Cannot inspect the service drop-ins."
     [[ -z $dropins || $dropins == "$dropin" ]] || fail "Other service drop-ins are active."
-    sudo -n mkdir -p -- "$dropdir"
+    sudo -n mkdir -p -m 0755 -- "$dropdir"
+    # The override contains fixture paths; credentials stay in the private checkout.
     if ! printf '%s\n[Service]\nWorkingDirectory=%s\nExecStart=\nExecStart=%s/.venv/bin/python %s/ReceiveMessages.py\nEnvironment="PATH=%s/.venv/bin"\n' \
         "$marker" "$checkout" "$checkout" "$checkout" "$checkout" |
         sudo -n tee "$dropin" >/dev/null; then
         sudo -n rm -f -- "$dropin"
         fail "Could not write the service drop-in."
     fi
+    sudo -n chmod 0644 -- "$dropin"
     restart_at "$checkout"
     exit
 fi
