@@ -155,13 +155,27 @@ def restart(expected_version):
 
 def image(version):
     assert not Path(".git").exists()
-    assert load_service().VERSION == version
-    result = subprocess.run(
-        ["/bin/bash", str(Path.cwd() / "update_pagalava.sh")],
-        capture_output=True, text=True,
-    )
-    print(result.stdout + result.stderr)
-    assert result.returncode == 2 and "re-flash" in result.stderr
+    assert not Path(".update-channel").exists()
+    service = load_service()
+    assert service.VERSION == version
+    original_run = subprocess.run
+    refusals = []
+
+    def observe(command, *args, **kwargs):
+        assert command == ["/bin/bash", str(Path.cwd() / "update_pagalava.sh")]
+        try:
+            return original_run(command, *args, **kwargs)
+        except subprocess.CalledProcessError as error:
+            refusals.append(error.returncode)
+            assert "re-flash" in error.stderr
+            print(f"UPDATE rc={error.returncode}\n{error.stderr}", flush=True)
+            raise
+
+    with patch.object(subprocess, "run", observe):
+        with patch.object(subprocess, "Popen", wraps=subprocess.Popen) as process:
+            assert service.message_upgrade() is False
+            process.assert_called_once()
+    assert refusals == [2]
     assert not Path(".git").exists()
 
 

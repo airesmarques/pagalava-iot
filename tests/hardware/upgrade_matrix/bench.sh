@@ -221,9 +221,6 @@ fi
 mkdir -p -- "$checkout"
 if [[ $install_type == image ]]; then
     local_git --git-dir="$origin" archive "$commit" | tar -xf - -C "$checkout"
-    [[ ! -e $checkout/.update-channel && ! -L $checkout/.update-channel ]] ||
-        fail "Firmware tree contains a reserved fixture path."
-    printf 'release/1.9\n' > "$checkout/.update-channel"
 else
     local_git clone --quiet --no-local --no-checkout "$origin" "$checkout"
     local_git -C "$checkout" switch --quiet -C main "$commit"

@@ -29,12 +29,18 @@ else
 fi
 cd "$checkout"
 setup=setup_pagalava_iot.sh
-if [[ -f setup_pagalava_iot_debian"$os".sh ]]; then
+unit_user_template='User=${USERNAME}'
+unit_script_template='ExecStart=${VENVDIR}/bin/python ${WORKINGDIR}/${SCRIPTNAME}'
+if [[ $install_type == image ]]; then
+    setup=build_image.sh
+    unit_user_template='User=${PAGALAVA_USER}'
+    unit_script_template='ExecStart=${VENVDIR}/bin/python ${WORKINGDIR}/ReceiveMessages.py'
+elif [[ -f setup_pagalava_iot_debian"$os".sh ]]; then
     setup=setup_pagalava_iot_debian"$os".sh
 fi
 echo "== Setup $revision on Debian $os using $setup =="
-for line in 'User=${USERNAME}' 'WorkingDirectory=${WORKINGDIR}' \
-    'Environment="PATH=${VENVDIR}/bin"' 'ExecStart=${VENVDIR}/bin/python ${WORKINGDIR}/${SCRIPTNAME}'; do
+for line in "$unit_user_template" 'WorkingDirectory=${WORKINGDIR}' \
+    'Environment="PATH=${VENVDIR}/bin"' "$unit_script_template"; do
     grep -Fx "$line" "$setup"
 done
 # Render the service from the selected historical setup template. The
@@ -42,6 +48,7 @@ done
 unit=/etc/systemd/system/receive_messages.service
 sed -n '/^\[Unit\]/,/^WantedBy=/p' "$setup" |
     sed -e 's|${USERNAME}|pagalava|g' -e 's|${GROUPNAME}|pagalava|g' \
+        -e 's|${PAGALAVA_USER}|pagalava|g' \
         -e 's|${WORKINGDIR}|'"$checkout"'|g' -e 's|${VENVDIR}|'"$checkout/.venv"'|g' \
         -e 's|${SCRIPTNAME}|ReceiveMessages.py|g' \
         -e 's|${IOT_CONNECTION_STRING}|offline-fixture|g' > "$unit"
@@ -56,7 +63,14 @@ as_device "$unit_python" --version
 as_device .venv/bin/python -m pip install --disable-pip-version-check --no-index \
     --find-links "/wheels/requirements-$requirements" -r requirements.txt
 as_device .venv/bin/python -m pip freeze
-as_device git -C "$remote" update-ref refs/heads/main "$target"
+service_environment=()
+if [[ $install_type == image ]]; then
+    as_device git -C "$remote" update-ref refs/heads/release/1.9 "$target"
+    echo 'IOT_CONNECTION_STRING=offline-fixture' | as_device tee .env >/dev/null
+else
+    as_device git -C "$remote" update-ref refs/heads/main "$target"
+    service_environment=(IOT_CONNECTION_STRING=offline-fixture)
+fi
 
 # Replace only the container's privileged command entry points.
 mv /usr/bin/git /usr/bin/git.real
@@ -71,7 +85,7 @@ fi
 
 service() {
     as_device /usr/bin/env -i HOME=/home/pagalava USER=pagalava LOGNAME=pagalava \
-        PATH="$unit_path" IOT_CONNECTION_STRING=offline-fixture \
+        PATH="$unit_path" "${service_environment[@]}" \
         RIG_SUDO_POLICY="$policy" PYTHONDONTWRITEBYTECODE=1 \
         "$unit_python" "$@"
 }
@@ -79,7 +93,6 @@ target_version=$(as_device git --git-dir="$remote" show "${target}:version.json"
     /usr/bin/python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')
 if [[ $install_type == image ]]; then
     [[ $expected == reflash ]]
-    echo release/1.9 | as_device tee .update-channel >/dev/null
     tar -cf /tmp/image-before.tar .
     service /rig/probe.py image "$version"
     tar -df /tmp/image-before.tar
