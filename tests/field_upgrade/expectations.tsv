@@ -1,0 +1,7 @@
+# case	commit	version	install	Debian	first-hop	reason	manual
+1.3	653acde	1.3	git	11,12,13	restart	6 production devices	sudo systemctl restart receive_messages.service
+1.7	e2c69ea	1.7	git	11,12,13	auto	23 production devices	-
+1.7.1	0d02b65	1.7.1	git	11,12,13	auto	main and the bench Pi	-
+1.8-plain	613476b	1.8	git	11,12,13	auto	2 production devices on 1.8, exact build unknown	-
+1.8-rollback	1fefd13	1.8	git	11,12,13	stays	Same 2 production devices, alternate known build	git pull --ff-only origin main
+1.9-image	61b7afa	1.9	image	12	reflash	1 production device on Debian 12	Reflash with a validated target image

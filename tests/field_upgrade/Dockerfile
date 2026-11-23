@@ -14,3 +14,4 @@ COPY requirements-* /requirements/
 RUN for requirements in /requirements/*; do \
     /usr/bin/python3 -m pip wheel --wheel-dir "/wheels/${requirements##*/}" -r "$requirements" || exit; \
     done
+COPY rig/ /rig/

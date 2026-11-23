@@ -1,64 +1,46 @@
 # Field upgrade rig
 
-Run one historical upgrade or the full 40-case matrix from the firmware worktree.
+[expectations.tsv](expectations.tsv) is the list of production upgrade paths.
+Check the dashboard's device list for deployed versions and counts before
+changing it. Confirm the install type and source commit with fleet records
+where the dashboard cannot distinguish builds. Keep both known 1.8 builds
+until the installed commits are known. Keep 1.7.1 while it is the main
+installer or the bench Pi baseline. Each row gives the case, commit, reported
+version, install type, Debian versions, expected first hop, reason, and manual
+step. Debian 11 is the actual 1.8 environment. Debian 11 and 12 cover the
+uncertain manual-install OS versions and Debian 13 checks current compatibility.
+The Git-free 1.9 image case runs on its production OS, Debian 12.
 
 ```sh
-tests/field_upgrade/run.sh --from 1.3 --os 11 --target 0d02b65
-tests/field_upgrade/run.sh --from 1.8-plain --os 12 --target 61b7afa --sudo password
-tests/field_upgrade/matrix.sh field-upgrade-logs
+tests/field_upgrade/matrix.sh field-upgrade-logs HEAD
+tests/field_upgrade/matrix.sh field-upgrade-logs/12 HEAD 12
+tests/field_upgrade/run.sh --from 1.8-plain --os 12 --target HEAD --sudo password
 ```
 
-Docker builds an image for each OS on first use. To refresh the cached images,
-run `tests/field_upgrade/build.sh 11` and `tests/field_upgrade/build.sh 12`.
-The image build downloads Debian packages and builds wheels from each starting
-revision's requirements. Debian 11 uses the package snapshot advertised by
-its base image. Each case then runs with `--network none`, installing only
-the starting revision's requirements and their dependencies from those wheels.
-The logs include the resolved package versions since the historical
-requirements leave most versions unpinned.
+Full Git history supplies the source and target objects. Docker builds one
+image per OS with wheels keyed by the historical requirements blob. Each
+case creates a fresh service user's venv using that commit's requirements
+and runs offline. Manual cases clone from a local bare origin and use the
+historical systemd template's interpreter and restricted PATH. The starting
+handler executes its own updater after local `origin/main` advances. The
+image fixture extracts the historical tree without Git metadata and checks
+that the actual updater exits 2, requests a reflash, and leaves the tree
+untouched.
 
-The runner transfers Git objects into a disposable container, creates a local
-bare origin, and clones it as the service user. It renders the service unit
-from the chosen revision's setup script and uses its working directory,
-interpreter and exact PATH. It calls the imported historical
-`message_upgrade()` with no TTY and observes the actual child processes.
-The checkout starts on local `main` and only local `origin/main` is advanced
-to the target. The starting script therefore drives the first upgrade even if
-the target contains a different updater.
+The matrix checks checkout, updater exit, and restart behavior against the
+data. A change in either direction fails the case. `auto` expects a restart
+request accepted under passwordless sudo. Under the password-required policy,
+the handler either skips the request after its permission probe or the
+stand-in denies it. `restart` expects 1.3 to move the files but fail to
+request a restart through its restricted PATH. `stays` expects rollback;
+the rig then applies the table's manual fast-forward. `reflash` ends at the
+image updater's refusal.
 
-The command stand-ins record the sudo policy probe and any restart request.
-They cover passwordless sudo and a password requirement without a TTY.
-A separate fresh-interpreter import gives the version after a simulated
-restart, including for cases where the handler could not request a restart.
-The running process's version comes from the same module constant the
-version response uses. A failed expectation gives a nonzero exit status.
-A matrix pass means the observed behavior matches the expectations, which
-include historical upgrade and restart failures.
-
-There is no real systemd, Pi OS image, GPIO, IoT Hub, or message transport in
-the case. The rig loads the actual Python Azure SDK to preserve its dependency
-checks and replaces the client class. GPIO module calls are inert and the
-service's main loop never starts. The Debian container uses build tools for
-the Python hardware wheels and skips the Pi-only apt and hardware setup.
-The stand-ins never elevate or kill a process. Local Git transport and a
-fresh checkout model manual installs with Git metadata. The separate 1.9
-channel diagnostic repeats the target updater with system tools on PATH
-to exercise its explicit `main` guard. The version dispatch diagnostic
-uses a synthetic `version.json` inside the disposable checkout.
-
-To add a starting point, add its label and commit in `run.sh`, stage its
-requirements in `build.sh`, and verify its unit template and expectations
-in `device.sh` and `probe.py`. Rebuild the images and add the label to
-`matrix.sh`. Pass any locally available target commit with `--target`;
-add it to the target loop in `matrix.sh` to cover both OSes and sudo
-policies. Review the assertions when a target is expected to change the
-checkout, restart, or import behavior.
-
-Run the candidate matrix against the current branch head with
-`tests/field_upgrade/matrix.sh field-upgrade-logs HEAD`. It also probes
-the historical reboot handlers and compares Bash's open script descriptor
-with the checkout path immediately after Git replaces the updater. The 1.7.1
-fixtures additionally run the 1.10 handler against local 1.11 and broken
-commits, test the credential sources, and compare a mocked relay trace with
-the published 1.9 handler. Git and the sudo/restart stand-ins are confined
-to disposable, network-disabled containers.
+Every path reaching the target loads it in a fresh interpreter and exercises
+the target's own updater to a throwaway next version. The 1.7.1 fixtures also
+check target rollback, missing channel, no Git, already-current behavior,
+credential sources, and relay parity with 1.9. The rig records per-case logs
+and a Markdown summary. The sudo/systemd stand-ins never restart a real
+process. GPIO and the Azure client are stubbed, and no hub, image boot, or
+physical relay is required. Use the [bench runbook](../../docs/hardware-upgrade-runbook.md)
+for physical testing.

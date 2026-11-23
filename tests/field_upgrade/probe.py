@@ -41,7 +41,7 @@ def head():
     ).strip()
 
 
-def upgrade(revision, source, target, policy, os_version):
+def upgrade(revision, source, target, policy, os_version, version, expected_outcome):
     print(f"Unit PATH={os.environ['PATH']} uid={os.getuid()} tty={os.isatty(0)}",
           flush=True)
     import requests
@@ -51,7 +51,7 @@ def upgrade(revision, source, target, policy, os_version):
             dependencies = [dep for dep in requires(package) if dep.lower().startswith("requests")]
             print(f"REQUIREMENTS {package}: {dependencies}", flush=True)
     service = load_service()
-    assert head() == source
+    assert head() == source and service.VERSION == version
     if revision == "1fefd13":
         commands = ("readlink", "dirname", "mktemp", "mkdir", "cat", "timeout", "rm", "sed")
         missing = [command for command in commands if shutil.which(command) is None]
@@ -121,17 +121,19 @@ def upgrade(revision, source, target, policy, os_version):
     )
     if json.loads(target_version)["version"] == "1.10":
         assert any("SCRIPT FD offset=" in stderr for stderr in update_stderr)
-    if revision == "1fefd13" and source != target:
+    if expected_outcome == "stays":
         assert (updates, final, probes, restarts, result) == ([1], source, [], [], False)
         assert "timeout: command not found" in checklog.read_text()
     else:
         assert (updates, final) == ([0], target)
-        if revision == "653acde":
+        if expected_outcome == "restart":
             assert (probes, restarts, result) == ([], ["missing"], False)
-        elif revision in ("613476b", "1fefd13"):
+        elif revision == "613476b":
+            assert expected_outcome == "auto"
             expected = ([0], ["allowed"]) if policy == "nopasswd" else ([1], [])
             assert (probes, restarts) == expected and result is True
         else:
+            assert expected_outcome == "auto"
             expected = "allowed" if policy == "nopasswd" else "denied"
             assert (probes, restarts, result) == ([], [expected], True)
 
@@ -139,7 +141,7 @@ def upgrade(revision, source, target, policy, os_version):
         reboot(service, revision, policy)
 
 
-def restart():
+def restart(expected_version):
     for package in ("requests", "dotenv", "azure.iot.device"):
         try:
             importlib.import_module(package)
@@ -148,31 +150,19 @@ def restart():
     service = load_service()
     import ReceiveMessages
     print(f"RESTART IMPORT ok version={ReceiveMessages.VERSION}", flush=True)
-    assert service.VERSION == json.loads(Path("version.json").read_text())["version"]
+    assert service.VERSION == expected_version
 
 
-def guard():
-    before = head()
-    argv = ["/bin/bash", str(Path.cwd() / "update_pagalava.sh")]
-    result = subprocess.run(argv, text=True, capture_output=True, check=False)
-    print(f"CHANNEL UNIT PATH rc={result.returncode}\n{result.stdout}{result.stderr}")
-    assert result.returncode == 0 and head() == before
-    assert "dirname: command not found" in result.stderr
-    assert "Updating from channel: release/1.9" in result.stdout
-    diagnostic_env = dict(os.environ, PATH=os.environ["PATH"] + ":/usr/bin:/bin")
-    result = subprocess.run(argv, text=True, capture_output=True, env=diagnostic_env)
-    print(f"CHANNEL DIAGNOSTIC PATH rc={result.returncode}\n{result.stdout}{result.stderr}")
-    assert result.returncode == 2 and head() == before
-    assert "REFUSING TO UPDATE: channel 'main'" in result.stderr
-
-
-def activation():
-    service = load_service()
-    with patch.object(service.relay_ops, "activate_machine_v1_1") as relay:
-        service.message_activate({"machine_id": 1, "number_of_impulses": 1})
-        relay.assert_called_once_with(machine_id=1, number_of_impulses=1)
-    print(f"ACTIVATION version={service.VERSION} selected=activate_machine_v1_1")
-    assert service.VERSION == "1.10"
+def image(version):
+    assert not Path(".git").exists()
+    assert load_service().VERSION == version
+    result = subprocess.run(
+        ["/bin/bash", str(Path.cwd() / "update_pagalava.sh")],
+        capture_output=True, text=True,
+    )
+    print(result.stdout + result.stderr)
+    assert result.returncode == 2 and "re-flash" in result.stderr
+    assert not Path(".git").exists()
 
 
 def reboot(service, revision, policy):
@@ -196,10 +186,10 @@ def reboot(service, revision, policy):
         assert commands == [(["/usr/bin/sudo", "/sbin/reboot"], True, status)]
 
 
-def second_hop(remote, policy):
+def second_hop(remote, policy, version, revision):
     service = load_service()
     initial = head()
-    assert service.VERSION == "1.10"
+    assert service.VERSION == version
     argv = ["/bin/bash", str(Path.cwd() / "update_pagalava.sh")]
 
     def git(*args):
@@ -240,23 +230,28 @@ def second_hop(remote, policy):
         if expected_head:
             assert head() == expected_head
         report = service.diagnostics_report.collect()
-        assert report["firmware_version"] == "1.10"
+        assert report["firmware_version"] == version
         assert report["upgrade_runtime_state"] == expected_runtime
         print(f"SECOND HOP {case} events={events} handler={accepted} "
               f"runtime={report['upgrade_runtime_state']} running={service.VERSION}")
 
     exercise("current", 10, initial, None, "current")
-    Path("version.json").write_text('{"version":"1.11"}')
+    components = version.split(".")
+    components[-1] = str(int(components[-1]) + 1)
+    next_version = ".".join(components)
+    Path("version.json").write_text(json.dumps({"version": next_version}))
     newer = publish()
     restart_status = 0 if policy == "nopasswd" else 1
     exercise("healthy", 0, newer, restart_status, "restart_pending")
-    fresh = 'import probe; probe.restart()'
     output = subprocess.check_output(
-        [sys.executable, "-c", fresh], text=True,
-        env=dict(os.environ, PYTHONPATH="/rig"),
+        [sys.executable, "/rig/probe.py", "restart", next_version], text=True,
     )
-    assert "RESTART IMPORT ok version=1.11" in output
+    assert f"RESTART IMPORT ok version={next_version}" in output
     print(output.strip())
+
+    print(f"ONWARD {next_version}, restart {'allowed' if restart_status == 0 else 'denied'}")
+    if revision != "0d02b65":
+        return
 
     git("reset", "--hard", initial)
     with Path("ReceiveMessages.py").open("a") as handle:
@@ -328,7 +323,7 @@ def relay(version):
 if __name__ == "__main__":
     action, *args = sys.argv[1:]
     {
-        "upgrade": upgrade, "guard": guard, "activation": activation,
+        "upgrade": upgrade, "image": image, "restart": restart,
         "second_hop": second_hop, "credential": credential,
         "relay": relay,
     }[action](*args)
