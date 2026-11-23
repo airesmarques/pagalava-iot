@@ -895,8 +895,6 @@ def _wrap_relay_ops(monitor: RelayMonitor):
                 return result
             return wrapper
 
-        _relay_ops.activate_machine_v1_0 = _make_wrapper(_relay_ops.activate_machine_v1_0)
-        _relay_ops.activate_machine_v1_1 = _make_wrapper(_relay_ops.activate_machine_v1_1)
         _relay_ops.activate_machine_v1_2 = _make_wrapper(_relay_ops.activate_machine_v1_2)
         logging.info("RelayOps wrapping: sucesso")
     except ImportError:

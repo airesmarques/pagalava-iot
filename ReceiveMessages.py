@@ -9,6 +9,7 @@ import re
 import requests
 import subprocess
 import socket
+from threading import Lock
 
 from dotenv import load_dotenv
 from azure.iot.device import IoTHubDeviceClient
@@ -22,7 +23,7 @@ from relay_ops import MachineNotConfiguredException  # Import the custom excepti
 # override=True makes the .env file authoritative even when the systemd unit
 # also sets IOT_CONNECTION_STRING, so switching .env (e.g. via env_manager.py)
 # reliably takes effect after a service restart.
-load_dotenv(override=True)
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"), override=True)
 
 # Configure logging with timestamp and log level
 logging.basicConfig(
@@ -40,25 +41,30 @@ def get_version():
         if os.path.exists(version_file_path):
             with open(version_file_path, 'r') as file:
                 version_data = json.load(file)
-                return version_data.get('version', '1.0')
+                version = version_data["version"]
+                major, minor = (int(part) for part in version.split(".")[:2])
+                if (major, minor) < (1, 3):
+                    logging.warning("Unsupported firmware version %s; using the current relay format", version)
+                return version
         else:
             logging.warning("Version file not found at %s, using default version", version_file_path)
-            return '1.0'  # Default version if file not found
+            return 'unknown'
     except Exception as e:
         logging.error("Failed to read version file: %s", str(e))
-        return '1.0'  # Default version if there's an error
+        return 'unknown'
 
 VERSION = get_version()
 logging.info("Running with version: %s", VERSION)
 
 RECEIVED_MESSAGES = 0
+diagnostics_report.set_running_firmware(VERSION)
+UPGRADE_LOCK = Lock()
 
 # Retrieve the IoT Hub connection string from environment variables
 IOT_CONNECTION_STRING = os.getenv("IOT_CONNECTION_STRING")
 if not IOT_CONNECTION_STRING:
-    logging.error("IOT_CONNECTION_STRING not found in environment variables.")
-    exit(1)
-print("Connection String: %s...%s" % (IOT_CONNECTION_STRING[:5], IOT_CONNECTION_STRING[-5:]))  # Partially display for security
+    logging.critical("IOT_CONNECTION_STRING is required in .env or the systemd unit environment.")
+    raise SystemExit(1)
 
 # Extract device ID from connection string
 def get_device_id():
@@ -279,38 +285,10 @@ def message_activate(json_data: dict):
             func_name, intent_id, machine_id, number_of_impulses
         )
 
-        # Use version-appropriate activation function
-        if VERSION.startswith("1.0"):
-            logging.info("%s: Using v1.0 activation method", func_name)
-            relay_ops.activate_machine_v1_0(
-                machine_id=machine_id,
-                number_of_impulses=number_of_impulses
-            )
-        elif VERSION.startswith("1.1"):
-            logging.info("%s: Using v1.1 activation method", func_name)
-            relay_ops.activate_machine_v1_1(
-                machine_id=machine_id,
-                number_of_impulses=number_of_impulses
-            )
-        elif VERSION.startswith("1.2"):
-            logging.info("%s: Using v1.2 activation method", func_name)
-            relay_ops.activate_machine_v1_2(
-                machine_id=machine_id,
-                number_of_impulses=number_of_impulses
-            )
-        elif (VERSION.startswith("1.5") or VERSION.startswith("1.6")
-              or VERSION.startswith("1.7") or VERSION.startswith("1.8")):
-            logging.info("%s: Using v1.5+ activation method (v1.2 relay + callback)", func_name)
-            relay_ops.activate_machine_v1_2(
-                machine_id=machine_id,
-                number_of_impulses=number_of_impulses
-            )
-        else:
-            logging.warning("%s: Unknown version %s, defaulting to v1.2 activation", func_name, VERSION)
-            relay_ops.activate_machine_v1_2(
-                machine_id=machine_id,
-                number_of_impulses=number_of_impulses
-            )
+        relay_ops.activate_machine_v1_2(
+            machine_id=machine_id,
+            number_of_impulses=number_of_impulses
+        )
 
         logging.info("%s: Activation successful for machine_id=%s", func_name, machine_id)
 
@@ -402,96 +380,43 @@ def message_reboot():
         logging.error("%s: Failed to reboot - %s", func_name, e)
 
 def message_upgrade():
-    """
-    Handle the upgrade message by pulling the latest code from GitHub.
-    Uses the update_pagalava.sh script to fetch and update the codebase.
-    """
-    func_name = "message_upgrade"
-    logging.info("%s: Upgrade command received.", func_name)
-    
+    """Stage an update and request a restart if the loaded code is stale."""
+    if not UPGRADE_LOCK.acquire(blocking=False):
+        logging.warning("Upgrade already in progress.")
+        return False
     try:
-        # Log the upgrade attempt
-        logging.info("%s: Starting upgrade process by running update_pagalava.sh", func_name)
-        
-        # Use absolute path for bash and script
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        update_script_path = os.path.join(script_dir, "update_pagalava.sh")
-        
-        # Check if script exists
-        if not os.path.exists(update_script_path):
-            logging.error("%s: Update script not found at %s", func_name, update_script_path)
+        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "update_pagalava.sh")
+        result = subprocess.run(["/bin/bash", script], capture_output=True, text=True)
+        if result.returncode not in (0, 10):
+            logging.error("Upgrade failed (exit %s): %s %s",
+                          result.returncode, result.stdout.strip(), result.stderr.strip())
             return False
-        
-        # Check if git is installed
-        git_path = "/usr/bin/git"
-        if not os.path.exists(git_path):
-            logging.error("%s: Git executable not found at %s", func_name, git_path)
+
+        logging.info("%s", result.stdout.strip())
+        if result.returncode == 10 and diagnostics_report.upgrade_runtime_state() == "current":
+            logging.info("The service is already running firmware %s from the current checkout.", VERSION)
+            return True
+
+        restart = ["/usr/bin/systemctl", "restart", "receive_messages.service"]
+        if os.geteuid() != 0:
+            restart = ["/usr/bin/sudo", "-n", *restart]
+        logging.warning("Restart requested. This process is still running firmware %s "
+                        "and cannot confirm the replacement service started.", VERSION)
+        # systemd stops this process on a successful restart. A returned error
+        # means the current process survived and can report the failure.
+        result = subprocess.run(restart, capture_output=True, text=True, timeout=120)
+        if result.returncode != 0:
+            logging.error("Restart failed (exit %s). Still running firmware %s: %s",
+                          result.returncode, VERSION, result.stderr.strip())
             return False
-        
-        # Run the update script with absolute path to bash
-        result = subprocess.run(
-            ["/bin/bash", update_script_path], 
-            capture_output=True, 
-            text=True, 
-            check=True
-        )
-        
-        # Log the results
-        logging.info("%s: Upgrade completed successfully", func_name)
-        logging.info("%s: Script output: %s", func_name, result.stdout)
-        
-        # Restarting needs root, and the service does not run as root. Probe
-        # first: sudo from a service has no tty, so if a password is required
-        # it fails silently and the device keeps running the OLD code until
-        # someone reboots — while reporting a successful upgrade the whole
-        # time. That is exactly what it looked like when an upgraded device
-        # kept reporting its previous version.
-        can_restart = False
-        try:
-            # -l asks "am I allowed to run this" without running it.
-            # Deliberately NOT `sudo -n true`: a device installed from the golden
-            # image has a narrow sudoers rule listing only the commands this
-            # service needs, so `true` may not be permitted even when the restart
-            # is. Probing the wrong command reported "cannot restart" on exactly
-            # the devices this was written to fix.
-            probe = subprocess.run(
-                ["/usr/bin/sudo", "-n", "-l",
-                 "/usr/bin/systemctl", "restart", "receive_messages.service"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10
-            )
-            can_restart = probe.returncode == 0
-        except (subprocess.SubprocessError, OSError) as e:
-            logging.warning("%s: could not probe sudo - %s", func_name, e)
-
-        if can_restart:
-            logging.info("%s: restarting the service to apply the update", func_name)
-            # Popen, not run: a successful restart kills this process, so there
-            # is nothing to wait for.
-            subprocess.Popen(
-                ["/usr/bin/sudo", "/usr/bin/systemctl", "restart", "receive_messages.service"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
-            )
-        else:
-            # Say so plainly. The files are updated and correct; only the
-            # running process is stale, and a reboot fixes it.
-            logging.warning(
-                "%s: FILES UPDATED but this service cannot restart itself "
-                "(passwordless sudo unavailable). The device keeps running the "
-                "previous version until it is rebooted.", func_name
-            )
-
+        logging.warning("Restart command returned while this process still runs firmware %s.", VERSION)
         return True
-    except subprocess.SubprocessError as e:
-        logging.error("%s: Upgrade failed - %s", func_name, e)
-        if hasattr(e, 'output'):
-            logging.error("%s: Script output: %s", func_name, e.output)
-        if hasattr(e, 'stderr'):
-            logging.error("%s: Error output: %s", func_name, e.stderr)
+    except (OSError, subprocess.SubprocessError) as exc:
+        logging.error("Upgrade or restart failed. This process is running firmware %s: %s", VERSION, exc)
         return False
-    except Exception as e:
-        logging.error("%s: Unexpected error during upgrade - %s", func_name, e)
-        return False
+    finally:
+        UPGRADE_LOCK.release()
+
 
 def message_version(json_data: dict):
     """

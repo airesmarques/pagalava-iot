@@ -154,37 +154,6 @@ def load_relay_mapping_v1_2(file_path='config.json'):
 
 
 # Load relay mapping at the beginning
-#relay_mapping_data = load_relay_mapping()
-
-
-def get_relay_number(
-    machine_id: int
-    ):
-    """
-    Retrieves the relay number for a given machine number using the relay mapping.
-
-    :param machine_id: The machine ID for which to retrieve the relay number.
-    :param mapping: The preloaded relay mapping.
-    :return: The relay number corresponding to the given machine ID, or None if not found.
-    """
-    # Load relay mapping at the beginning
-    # Doing it here allows for real time changes without restart
-    relay_mapping_data = load_relay_mapping_v1_0()
-    return relay_mapping_data.get(machine_id, None)
-
-
-def get_relay_info_v1_1(machine_id: int):
-    """
-    Retrieves the relay information for a given machine ID using the relay mapping.
-
-    :param machine_id: The machine ID for which to retrieve the relay information.
-    :return: A dictionary containing relay_number and time_relay_ms, or None if not found.
-    """
-    # Load relay mapping to allow for real-time changes without restart
-    relay_mapping_data = load_relay_mapping_v1_1()
-    return relay_mapping_data.get(machine_id, None)
-
-
 def get_relay_info_v1_2(machine_id: int):
     """
     Retrieves the relay information for a given machine ID using the v1.2 relay mapping.
@@ -209,59 +178,6 @@ def control_relay(
     GPIO.output(gpio, state)
 
     # GPIO.cleanup()
-
-
-def activate_machine_v1_0(
-    machine_id: int,
-    number_of_impulses: int = 1):
-    """
-    Activates a machine by controlling its relay.
-
-    :param machine_id: The ID of the machine to activate.
-    :param number_of_impulses: Number of times to activate the machine.
-    :raises MachineNotConfiguredException: If the machine_id is not found in the relay mapping.
-    """
-    relay_number = get_relay_number(machine_id)
-    
-    if relay_number is None:
-        raise MachineNotConfiguredException(machine_id)
-    
-    for i in range(number_of_impulses):
-        # Activate the machine by setting the relay to the energized state (low)
-        control_relay(relay_number, GPIO.LOW)
-        # Deactivate after 2 seconds
-        time.sleep(ACTIVATION_TIME_DURATION)
-        control_relay(relay_number, GPIO.HIGH)
-        time.sleep(ACTIVATION_TIME_INTERVAL)
-
-
-def activate_machine_v1_1(machine_id: int, number_of_impulses: int = 1):
-    """
-    Activates a machine by controlling its relay for the duration specified in the config.
-    If no duration is specified, defaults to 2000ms (2 seconds).
-
-    :param machine_id: The ID of the machine to activate.
-    :param number_of_impulses: Number of times to activate the machine.
-    :raises MachineNotConfiguredException: If the machine_id is not found in the relay mapping.
-    """
-    relay_info = get_relay_info_v1_1(machine_id)
-    
-    if relay_info is None:
-        raise MachineNotConfiguredException(machine_id)
-    
-    relay_number = relay_info['relay_number']
-    # Use time_relay_ms from config or default to 2000ms if not provided
-    time_relay_ms = relay_info.get('time_relay_ms', 2000)
-    # Convert milliseconds to seconds for the sleep function
-    activation_duration = time_relay_ms / 1000.0
-    
-    for i in range(number_of_impulses):
-        # Activate the machine by setting the relay to the energized state (low)
-        control_relay(relay_number, GPIO.LOW)
-        # Deactivate after the specified duration
-        time.sleep(activation_duration)
-        control_relay(relay_number, GPIO.HIGH)
-        time.sleep(ACTIVATION_TIME_INTERVAL)
 
 
 def activate_machine_v1_2(

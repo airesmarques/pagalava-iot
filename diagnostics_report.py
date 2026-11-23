@@ -237,6 +237,25 @@ def set_clock_wait_seconds(seconds):
         _clock_wait_seconds = None
 
 
+_running_version = None
+_running_commit = None
+
+
+def set_running_firmware(version):
+    global _running_version, _running_commit
+    _running_version = version
+    _running_commit = _safe(lambda: _git("rev-parse", "HEAD"))
+
+
+def upgrade_runtime_state():
+    checkout = _safe(lambda: _git("rev-parse", "HEAD"))
+    if _running_commit and checkout:
+        return "current" if checkout == _running_commit else "restart_pending"
+    if _running_version and _safe(_firmware_version) not in (None, _running_version):
+        return "restart_pending"
+    return "unknown"
+
+
 def collect():
     """
     Everything we know about this device, as a flat dict of strings.
@@ -255,7 +274,8 @@ def collect():
         "os_pretty": pretty,
         "os_version_id": version_id,
         "python_version": _safe(_python_version),
-        "firmware_version": _safe(_firmware_version),
+        "firmware_version": _running_version or _safe(_firmware_version),
+        "upgrade_runtime_state": upgrade_runtime_state(),
         "git_commit": _safe(lambda: _git("rev-parse", "--short", "HEAD")),
         "git_branch": _safe(lambda: _git("rev-parse", "--abbrev-ref", "HEAD")),
         "connection_string_source": _safe(_connection_source),
@@ -297,6 +317,7 @@ def send(device_id, base_url, generate_token):
         import requests
 
         payload = collect()
+        payload.pop("upgrade_runtime_state", None)  # The backend allow-list is unchanged.
         payload["device_id"] = device_id
         payload["token"] = generate_token(device_id)
 
