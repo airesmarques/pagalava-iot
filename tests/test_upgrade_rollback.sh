@@ -42,17 +42,10 @@ echo 'def generate_minute_token(device_id, timestamp=None): return "x"' > minute
 cp "$REPO_SRC/update_pagalava.sh" .
 git add -A && git commit -qm "good version"
 GOOD="$(git rev-parse HEAD)"
-# The upstream carries a release/* branch alongside main so one fixture serves
-# both lines: the image line refuses any channel outside release/*, and main's
-# script ignores the channel file entirely and pulls origin/main.
+# Exercise an explicit release channel for the first three cases.
 git branch -q -f release/test HEAD
-
 git clone -q "$UP" "$DEV"
 cd "$DEV"
-# Tests 1 and 2 need the device to follow the branch this fixture advances.
-# On the image line that MUST be a release/* channel — the script now refuses
-# anything else, because following `main` would downgrade an image install. On
-# main's line the file is ignored entirely, so writing it is harmless.
 echo "release/test" > .update-channel
 
 echo "=== 1. a healthy upgrade is accepted ==="
@@ -78,7 +71,7 @@ git commit -qam "broken on python 3.9" && git branch -q -f release/test HEAD
 BROKEN="$(git rev-parse HEAD)"
 cd "$DEV"
 out="$(bash update_pagalava.sh 2>&1)"; rc=$?
-[ "$rc" -ne 0 ] && ok "broken upgrade exits non-zero" || bad "broken upgrade reported success"
+[ "$rc" -eq 4 ] && ok "broken upgrade exits 4" || bad "broken upgrade reported success"
 echo "$out" | grep -q "UPGRADE ABORTED" && ok "says clearly that it aborted" || bad "no clear abort message"
 if [ "$(git rev-parse HEAD)" = "$GOOD2" ]; then
     ok "device rolled back to the version that was running"
@@ -91,10 +84,7 @@ python3 -c "import ast,sys; ast.parse(open('minute_token.py').read())" 2>/dev/nu
   && grep -q "timestamp=None" minute_token.py \
   && ok "the working file is back on disk" || bad "file content not restored"
 
-echo "=== 3. a device follows its channel, not whatever main happens to be ==="
-# The case that matters for the image: main is OLDER than the device. Pulling it
-# would silently downgrade an image-installed device, removing first-boot
-# provisioning and this very rollback check.
+echo "=== 3. a release override selects a separate branch ==="
 cd "$UP"
 # Test 2 deliberately left a broken module in the upstream. Start this scenario
 # from a working state, or the import check rolls back for the right reason and
@@ -112,67 +102,30 @@ echo "release/test" > .update-channel
 CHOUT="$(bash update_pagalava.sh 2>&1)"; CHRC=$?
 [ $CHRC -eq 0 ] && ok "upgrade exits 0" || { bad "upgrade failed"; echo "$CHOUT" | sed "s/^/        /" | head -6; }
 
-# The two lines want OPPOSITE behaviour here, and each is a safety property.
-#
-#   image line (channel-aware): must FOLLOW .update-channel. Falling back to
-#   main would downgrade the device and strip first-boot provisioning.
-#
-#   main (not channel-aware):   must IGNORE .update-channel. A manually
-#   installed device that could be diverted onto the image line would be
-#   pointed at code assuming provisioning it never had. `origin/main` is
-#   hardcoded precisely so no file on the device can redirect it.
-if grep -q "update-channel" "$REPO_SRC/update_pagalava.sh"; then
-    if [ "$(git rev-parse HEAD)" = "$RELEASE_TIP" ]; then
-        ok "channel-aware line followed its channel"
-    elif [ "$(git rev-parse HEAD)" = "$GOOD2" ]; then
-        bad "DOWNGRADED to main - an image device would lose first-boot and the rollback check"
-    else
-        bad "ended up somewhere unexpected"
-    fi
-else
-    if [ "$(git rev-parse HEAD)" = "$GOOD2" ]; then
-        ok "main line ignored .update-channel and stayed on main (cannot be diverted)"
-    else
-        bad "a file on the device diverted a manual install off main - channel separation is not enforced"
-    fi
-fi
-rm -f .update-channel
+[ "$(git rev-parse HEAD)" = "$RELEASE_TIP" ] \
+    && ok "followed release/test" || bad "did not follow release/test"
 
-# The channel must not be able to point off the image line.
-#
-# .update-channel is read verbatim, so before the guard a single word in a file
-# on the device would send an image install to `main` — which is OLDER, and
-# strips first-boot provisioning, the relay test and the clock wait. A downgrade
-# dressed as an upgrade, and the only direction that actually breaks a device:
-# main's script has no channel logic at all, so the reverse cannot happen.
-if grep -q "update-channel" "$REPO_SRC/update_pagalava.sh"; then
-    echo
-    echo "The channel cannot leave the image line"
-    for bad in main feature/rpi5 ""; do
-        echo "$bad" > .update-channel
-        OUT="$(bash update_pagalava.sh 2>&1)"; RC=$?
-        LABEL="${bad:-<empty>}"
-        case "$OUT" in
-            *"REFUSING TO UPDATE"*)
-                [ "$RC" -ne 0 ] \
-                    && ok "refused '$LABEL' and exited non-zero" \
-                    || bad "refused '$LABEL' but exited 0 — the dashboard would call that success" ;;
-            *)
-                if [ -z "$bad" ]; then
-                    ok "empty channel fell back to the default rather than being followed"
-                else
-                    bad "FOLLOWED '$LABEL' — an image device can be downgraded onto the manual line"
-                fi ;;
-        esac
-    done
-    echo "release/other" > .update-channel
-    OUT="$(bash update_pagalava.sh 2>&1)"
-    case "$OUT" in
-        *"REFUSING TO UPDATE"*) bad "refused a legitimate release/* channel" ;;
-        *) ok "a legitimate release/* channel is still allowed" ;;
-    esac
-    rm -f .update-channel
-fi
+echo "=== 4. default and explicit main, invalid override, failed fetch ==="
+rm .update-channel
+OUT="$(bash update_pagalava.sh 2>&1)"; RC=$?
+[ "$RC" -eq 0 ] && [ "$(git rev-parse HEAD)" = "$GOOD2" ] \
+    && ok "missing channel defaults to main" || bad "default main failed: $OUT"
+
+echo main > .update-channel
+OUT="$(bash update_pagalava.sh 2>&1)"; RC=$?
+[ "$RC" -eq 10 ] && [[ $OUT == *"Already up to date"* ]] \
+    && ok "explicit main is accepted and current exits 10" || bad "explicit main failed: $OUT"
+
+echo feature/rpi5 > .update-channel
+OUT="$(bash update_pagalava.sh 2>&1)"; RC=$?
+[ "$RC" -eq 6 ] && [[ $OUT == *"REFUSING TO UPDATE"* ]] \
+    && ok "invalid channel exits 6" || bad "invalid channel was not refused: $OUT"
+
+echo release/missing > .update-channel
+OUT="$(bash update_pagalava.sh 2>&1)"; RC=$?
+[ "$RC" -eq 3 ] && [ "$(git rev-parse HEAD)" = "$GOOD2" ] \
+    && [[ $OUT != *"Already up to date"* && $OUT != *"Upgrade OK"* ]] \
+    && ok "failed fetch preserves checkout and exits 3" || bad "fetch failure was mishandled: $OUT"
 
 echo ""
 echo "passed: $pass  failed: $fail"

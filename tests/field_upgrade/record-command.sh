@@ -12,4 +12,7 @@ if [[ ${1:-} == -n && ${2:-} == -l ]]; then
     test -x "$3"
     exit
 fi
+if [[ ${1:-} == -n ]]; then
+    shift
+fi
 exec "$@"

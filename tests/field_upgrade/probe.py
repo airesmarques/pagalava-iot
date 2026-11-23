@@ -8,7 +8,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, os.getcwd())
@@ -59,6 +59,7 @@ def upgrade(revision, source, target, policy, os_version):
         assert missing == list(commands)
     original_run = subprocess.run
     original_popen = subprocess.Popen
+    update_stderr = []
     updates = []
     probes = []
     restarts = []
@@ -77,6 +78,7 @@ def upgrade(revision, source, target, policy, os_version):
                     print(f"UPDATE stdout:\n{result.stdout or ''}", flush=True)
                     print(f"UPDATE stderr:\n{result.stderr or ''}", flush=True)
                     updates.append(result.returncode)
+                    update_stderr.append(result.stderr or "")
         elif argv[0] == "/usr/bin/sudo" and "-l" in argv:
             # Preserve the discarded output in the observation log.
             kwargs.update(stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -114,6 +116,11 @@ def upgrade(revision, source, target, policy, os_version):
     print(f"RESULT os={os_version} from={revision} target={target[:7]} "
           f"sudo={policy} update={updates} head={final[:7]} handler={result} "
           f"probe={probes} restart={restarts} running={service.VERSION}", flush=True)
+    target_version = subprocess.check_output(
+        ["/usr/bin/git", "show", f"{target}:version.json"], text=True
+    )
+    if json.loads(target_version)["version"] == "1.10":
+        assert any("SCRIPT FD offset=" in stderr for stderr in update_stderr)
     if revision == "1fefd13" and source != target:
         assert (updates, final, probes, restarts, result) == ([1], source, [], [], False)
         assert "timeout: command not found" in checklog.read_text()
@@ -127,6 +134,9 @@ def upgrade(revision, source, target, policy, os_version):
         else:
             expected = "allowed" if policy == "nopasswd" else "denied"
             assert (probes, restarts, result) == ([], [expected], True)
+
+    if revision in ("653acde", "e2c69ea"):
+        reboot(service, revision, policy)
 
 
 def restart():
@@ -165,6 +175,158 @@ def activation():
     assert service.VERSION == "1.10"
 
 
+def reboot(service, revision, policy):
+    original = subprocess.Popen
+    commands = []
+
+    def observe(argv, *args, **kwargs):
+        process = original(argv, *args, **kwargs)
+        process.communicate(timeout=10)
+        commands.append((argv, all(shutil.which(command) for command in argv[:2]),
+                         process.returncode))
+        return process
+
+    with patch.object(subprocess, "Popen", observe):
+        service.message_handler(SimpleNamespace(data=b'{"msg_type":"reboot"}'))
+    print(f"REBOOT dispatch={revision} calls={commands}")
+    if revision == "653acde":
+        assert commands == []
+    else:
+        status = 0 if policy == "nopasswd" else 1
+        assert commands == [(["/usr/bin/sudo", "/sbin/reboot"], True, status)]
+
+
+def second_hop(remote, policy):
+    service = load_service()
+    initial = head()
+    assert service.VERSION == "1.10"
+    argv = ["/bin/bash", str(Path.cwd() / "update_pagalava.sh")]
+
+    def git(*args):
+        return subprocess.check_output(
+            ["/usr/bin/git", *args], text=True, stderr=subprocess.STDOUT
+        ).strip()
+
+    def publish():
+        git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+            "commit", "-qam", "Temporary fixture")
+        target = head()
+        git("push", "--force", remote, "HEAD:refs/heads/main")
+        git("reset", "--hard", initial)
+        return target
+
+    original_run = subprocess.run
+
+    def exercise(case, expected_code, expected_head, expected_restart, expected_runtime):
+        events = []
+
+        def observe(command, *args, **kwargs):
+            result = original_run(command, *args, **kwargs)
+            if command == argv:
+                events.append(("update", result.returncode))
+            if command[0] == "/usr/bin/sudo":
+                assert command == ["/usr/bin/sudo", "-n", "/usr/bin/systemctl",
+                                   "restart", "receive_messages.service"]
+                events.append(("restart", result.returncode))
+            return result
+
+        with patch.object(subprocess, "run", observe):
+            accepted = service.message_upgrade()
+        expected = [("update", expected_code)]
+        if expected_restart is not None:
+            expected.append(("restart", expected_restart))
+        assert events == expected, events
+        assert accepted == (expected_restart == 0 or case == "current")
+        if expected_head:
+            assert head() == expected_head
+        report = service.diagnostics_report.collect()
+        assert report["firmware_version"] == "1.10"
+        assert report["upgrade_runtime_state"] == expected_runtime
+        print(f"SECOND HOP {case} events={events} handler={accepted} "
+              f"runtime={report['upgrade_runtime_state']} running={service.VERSION}")
+
+    exercise("current", 10, initial, None, "current")
+    Path("version.json").write_text('{"version":"1.11"}')
+    newer = publish()
+    restart_status = 0 if policy == "nopasswd" else 1
+    exercise("healthy", 0, newer, restart_status, "restart_pending")
+    fresh = 'import probe; probe.restart()'
+    output = subprocess.check_output(
+        [sys.executable, "-c", fresh], text=True,
+        env=dict(os.environ, PYTHONPATH="/rig"),
+    )
+    assert "RESTART IMPORT ok version=1.11" in output
+    print(output.strip())
+
+    git("reset", "--hard", initial)
+    with Path("ReceiveMessages.py").open("a") as handle:
+        handle.write('\nraise RuntimeError("deliberate import failure")\n')
+    publish()
+    exercise("broken", 4, initial, None, "current")
+
+    channel = Path(".update-channel")
+    channel.write_text("release/missing\n")
+    try:
+        exercise("fetch_failed", 3, initial, None, "current")
+    finally:
+        channel.unlink()
+
+    repository = Path(".git")
+    hidden = repository.rename(".git.offline")
+    try:
+        exercise("no_git", 2, None, None, "unknown")
+    finally:
+        hidden.rename(repository)
+
+
+def credential():
+    invoke = [sys.executable, "-c", "import probe; print(probe.load_service().IOT_CONNECTION_STRING)"]
+    env = dict(os.environ, PYTHONPATH="/rig")
+    file = Path(".env")
+    symlink_target = Path(".env.fixture")
+    try:
+        assert subprocess.check_output(invoke, env=env, text=True).strip() == "offline-fixture"
+        file.write_text("IOT_CONNECTION_STRING=file-fixture\n")
+        assert subprocess.check_output(invoke, env=env, text=True).strip() == "file-fixture"
+        file.rename(symlink_target)
+        file.symlink_to(symlink_target)
+        assert subprocess.check_output(invoke, env=env, text=True).strip() == "file-fixture"
+        file.unlink()
+        result = subprocess.run(invoke, env={k: v for k, v in env.items() if k != "IOT_CONNECTION_STRING"},
+                                capture_output=True, text=True)
+        assert result.returncode == 1 and "required in .env or the systemd unit" in result.stderr
+    finally:
+        file.unlink(missing_ok=True)
+        symlink_target.unlink(missing_ok=True)
+    print("Credential sources: unit fallback, plain .env and symlink precedence, missing fatal")
+
+
+def relay(version):
+    # The config is opened relative to the service working directory.
+    config = Path("config.json")
+    config.write_text(json.dumps({"7": {
+        "machine_id": "7", "relay_number": "9", "time_relay_ms": "1375",
+        "interval_between_impulses_ms": "225", "number_of_impulses_activation": "2",
+    }}))
+    service = load_service()
+    service.VERSION = version
+    calls = []
+    ops = service.relay_ops
+    try:
+        with patch.object(ops, "control_relay", side_effect=lambda *args: calls.append(("relay", *args))), \
+             patch.object(ops.time, "sleep", side_effect=lambda seconds: calls.append(("sleep", seconds))), \
+             patch.object(ops.GPIO, "LOW", 0), patch.object(ops.GPIO, "HIGH", 1):
+            service.message_activate({"machine_id": "7", "number_of_impulses": 2})
+    finally:
+        config.unlink()
+    assert len(calls) == 15, calls
+    print("RELAY TRACE " + json.dumps(calls))
+
+
 if __name__ == "__main__":
     action, *args = sys.argv[1:]
-    {"upgrade": upgrade, "guard": guard, "activation": activation}[action](*args)
+    {
+        "upgrade": upgrade, "guard": guard, "activation": activation,
+        "second_hop": second_hop, "credential": credential,
+        "relay": relay,
+    }[action](*args)

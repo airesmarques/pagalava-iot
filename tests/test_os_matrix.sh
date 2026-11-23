@@ -67,9 +67,12 @@ for row in $MATRIX; do
     echo "=== Debian ${deb} (${img}) ==="
 
     out="$(docker run --rm -i -v "$PWD:/src:ro" -w /tmp \
-        -e IOT_CONNECTION_STRING="$FAKE_CS" "$img" sh -c '
+        -e RIG_DEBIAN="$deb" -e IOT_CONNECTION_STRING="$FAKE_CS" "$img" sh -c '
 set -u
 export DEBIAN_FRONTEND=noninteractive
+if [ "$RIG_DEBIAN" = 11 ]; then
+    sed -i "/^deb /d; s|^# deb http://snapshot.debian.org/|deb [check-valid-until=no] http://snapshot.debian.org/|" /etc/apt/sources.list
+fi
 apt-get update -qq >/dev/null 2>&1
 apt-get install -y -qq python3 python3-pip python3-venv >/dev/null 2>&1
 PY=python3
@@ -94,8 +97,8 @@ for f in /src/*.py; do
 done
 # 2. the service actually starts. It cannot reach Azure and is not meant to;
 #    reaching the client instantiation proves everything before the network.
-timeout 45 /venv/bin/python /tmp/ReceiveMessages.py > /tmp/run.log 2>&1
-grep -q "Instantiating IoT Hub client" /tmp/run.log && echo "STARTED"
+timeout 45 /venv/bin/python /src/tests/startup_probe.py > /tmp/run.log 2>&1
+cat /tmp/run.log
 grep -q "Traceback" /tmp/run.log && { echo "TRACEBACK"; grep -A3 Traceback /tmp/run.log | head -6; }
 ' 2>&1)"
 
@@ -111,11 +114,7 @@ grep -q "Traceback" /tmp/run.log && { echo "TRACEBACK"; grep -A3 Traceback /tmp/
         fail=$((fail+1)); continue
     fi
     echo "  ok    every module imports"
-    # Reaching client instantiation is the pass condition. A traceback AFTER
-    # that is the MQTT connect failing against a fake hostname — expected, since
-    # CI has no Azure. Treating any traceback as failure reported a broken
-    # Debian 11 when the code was fine, which is the same class of mistake this
-    # file exists to catch.
+    # The startup probe exits at the SDK boundary without network calls.
     if echo "$out" | grep -q "STARTED"; then
         echo "  ok    the service starts and reaches the IoT Hub client"
         pass=$((pass+1))

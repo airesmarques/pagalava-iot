@@ -32,6 +32,6 @@ source=$(git rev-parse "${revision}^{commit}")
 if ! docker image inspect "field-upgrade-rig:$os" >/dev/null 2>&1; then
     "$rig/build.sh" "$os"
 fi
-printf '%s\n' "$source" "$target" | git pack-objects --stdout --revs |
+printf '%s\n' "$source" "$target" 61b7afa | git pack-objects --stdout --revs |
     docker run --rm -i --network none --pull never -v "$rig:/rig:ro" "field-upgrade-rig:$os" \
         /bin/bash /rig/device.sh "$revision" "$source" "$target" "$policy" "$os"

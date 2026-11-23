@@ -28,8 +28,9 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 
 
 def _device_modules():
-    # Top-level modules only: these are what land on a device and get imported
-    # by the service. tests/ and build tooling run on a dev machine.
+    # Includes ReceiveMessages and every first-party module it imports
+    # (relay_ops, diagnostics_report and minute_token). Other top-level
+    # device tools are checked too.
     return sorted(REPO.glob("*.py"))
 
 
@@ -51,7 +52,10 @@ def _pep604_annotations(tree):
     for node in ast.walk(tree):
         anns = []
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            anns = [a.annotation for a in node.args.args + node.args.kwonlyargs if a.annotation]
+            anns = [a.annotation for a in node.args.posonlyargs + node.args.args + node.args.kwonlyargs if a.annotation]
+            for variadic in (node.args.vararg, node.args.kwarg):
+                if variadic and variadic.annotation:
+                    anns.append(variadic.annotation)
             if node.returns:
                 anns.append(node.returns)
         elif isinstance(node, ast.AnnAssign) and node.annotation:
@@ -65,7 +69,7 @@ def _pep604_annotations(tree):
 
 @pytest.mark.parametrize("path", _device_modules(), ids=lambda p: p.name)
 def test_importable_under_python39(path):
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path), feature_version=(3, 9))
     if _has_future_annotations(tree):
         return
     bad = _pep604_annotations(tree)

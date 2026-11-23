@@ -49,6 +49,8 @@ as_device .venv/bin/python -m pip freeze
 as_device git -C "$remote" update-ref refs/heads/main "$target"
 
 # Replace only the container's privileged command entry points.
+mv /usr/bin/git /usr/bin/git.real
+install -m 755 /rig/observe-git.sh /usr/bin/git
 rm -f /usr/bin/sudo /usr/bin/systemctl /sbin/reboot
 install -m 755 /rig/record-command.sh /usr/bin/sudo
 install -m 755 /rig/record-command.sh /usr/bin/systemctl
@@ -67,6 +69,27 @@ echo "== Historical handler =="
 service /rig/probe.py upgrade "$revision" "$source" "$target" "$policy" "$os"
 echo "== Simulated restart in a fresh interpreter =="
 service -c 'import sys; sys.path.append("/rig"); import probe; probe.restart()'
+if [[ $(as_device git --git-dir="$remote" show "${target}:version.json" 2>/dev/null | /usr/bin/python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])') == 1.10 && $revision == 0d02b65 ]]; then
+    echo "== Unified updater second hop =="
+    service /rig/probe.py second_hop "$remote" "$policy"
+    service /rig/probe.py credential
+    baseline=/home/pagalava/baseline
+    as_device mkdir "$baseline"
+    as_device /bin/bash -c 'git --git-dir="$1" archive 61b7afa | tar -xf - -C "$2"' _ "$remote" "$baseline"
+    for version in 1.10 1.9 1.3 2.0; do
+        trace=$(service /rig/probe.py relay "$version" | sed -n 's/^RELAY TRACE //p')
+        echo "RELAY $version $trace"
+        if [[ $version == 1.10 ]]; then
+            expected=$trace
+        fi
+        [[ -n $trace && $trace == "$expected" ]]
+    done
+    trace=$(cd "$baseline" && service /rig/probe.py relay 1.9 | sed -n 's/^RELAY TRACE //p')
+    echo "RELAY 61b7afa $trace"
+    [[ $trace == "$expected" ]]
+    echo "Activation parity: 1.10, 1.9, 1.3 and 2.0 match 61b7afa"
+fi
+
 if [[ $target == 61b7afa* && $(as_device git rev-parse HEAD) == "$target" ]]; then
     echo "== Second upgrade with target script and explicit main channel =="
     as_device /bin/bash -c 'echo main > .update-channel'

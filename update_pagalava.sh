@@ -18,8 +18,7 @@ update() {
     /usr/bin/flock -n 9 || { echo "Another update is in progress." >&2; exit 5; }
 
     if [[ -e .update-channel ]]; then
-        channel=$(tr -d ' 	
-' < .update-channel) || exit 5
+        channel=$(tr -d ' \t\r\n' < .update-channel) || exit 5
         channel=${channel:-main}
     fi
     case "$channel" in

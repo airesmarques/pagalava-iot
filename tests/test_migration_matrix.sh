@@ -27,6 +27,8 @@ FROM_VERSIONS="
 05d84ca:1.5
 v1.6:1.6
 v1.7:1.7
+613476b:1.8-plain
+1fefd13:1.8-rollback
 "
 
 declare -A IMG=( [11]=debian:bullseye-slim [12]=debian:bookworm-slim [13]=debian:trixie-slim )
@@ -75,11 +77,14 @@ for deb in $OSES; do
     ref="${row%%:*}"; label="${row##*:}"
     printf "  Debian %-2s  %-4s -> %-5s : " "$deb" "$label" "$TARGET_LABEL"
 
-    out="$(docker run --rm -v "$BARE:/repo.git:ro" -w /tmp \
-      -e IOT_CONNECTION_STRING="HostName=fake.azure-devices.net;DeviceId=rpiCI;SharedAccessKey=Y2ktdGVzdA==" \
+    out="$(docker run --rm -v "$BARE:/repo.git:ro" -v "$PWD/tests/startup_probe.py:/startup_probe.py:ro" -w /tmp \
+      -e RIG_DEBIAN="$deb" -e IOT_CONNECTION_STRING="HostName=fake.azure-devices.net;DeviceId=rpiCI;SharedAccessKey=Y2ktdGVzdA==" \
       "$img" sh -c "
 set -u
 export DEBIAN_FRONTEND=noninteractive
+if [ "\$RIG_DEBIAN" = 11 ]; then
+    sed -i '/^deb /d; s|^# deb http://snapshot.debian.org/|deb [check-valid-until=no] http://snapshot.debian.org/|' /etc/apt/sources.list
+fi
 apt-get update -qq >/dev/null 2>&1
 apt-get install -y -qq python3 python3-venv git >/dev/null 2>&1
 git clone -q /repo.git /device 2>/dev/null || { echo CLONEFAIL; exit 1; }
@@ -103,14 +108,12 @@ echo AFTER_HAS_FIRSTBOOT=\$([ -f /device/firstboot.sh ] && echo yes || echo no)
 # Does the service start on this OS after migrating?
 echo PYVER=\$(/venv/bin/python -c 'import sys;print(sys.version.split()[0])')
 echo GOTVER=\$(sed -n 's/.*\"version\"[^\"]*\"\([0-9.]*\)\".*/\\1/p' /device/version.json | head -1)
-timeout 45 /venv/bin/python /device/ReceiveMessages.py > /tmp/run.log 2>&1
-grep -q 'Instantiating IoT Hub client' /tmp/run.log && echo STARTED
+timeout 45 /venv/bin/python /startup_probe.py > /tmp/run.log 2>&1
+cat /tmp/run.log
 grep -q Traceback /tmp/run.log && { echo TRACEBACK; grep -A4 Traceback /tmp/run.log | tail -3; }
 " 2>&1)"
 
-    # Same rule as the OS matrix: reaching client instantiation is the pass
-    # condition; a traceback after it is the MQTT connect, which CI cannot
-    # satisfy and is not meant to.
+    # The startup probe exits at the SDK boundary without network calls.
     pyv="$(echo "$out"  | grep -oE 'PYVER=[0-9.]+'        | cut -d= -f2 | head -1)"
     bver="$(echo "$out" | grep -oE 'BEFORE_VER=[0-9.]+'   | cut -d= -f2 | head -1)"
     bsha="$(echo "$out" | grep -oE 'BEFORE_SHA=[0-9a-f]+' | cut -d= -f2 | head -1)"
