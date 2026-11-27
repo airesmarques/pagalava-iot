@@ -27,6 +27,7 @@ FROM_VERSIONS="
 05d84ca:1.5
 v1.6:1.6
 v1.7:1.7
+0d02b65:1.7.1
 613476b:1.8-plain
 1fefd13:1.8-rollback
 "

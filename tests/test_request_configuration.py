@@ -12,7 +12,7 @@ import os
 import sys
 import types
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, mock_open, patch
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -145,6 +145,49 @@ class TestSelfHealOnActivation(unittest.TestCase):
              patch.object(rm, "request_configuration") as req:
             rm.message_activate({"machine_id": 1, "number_of_impulses": 1})
         req.assert_not_called()
+
+
+class TestUnifiedVersionBehavior(unittest.TestCase):
+    def test_fleet_and_future_versions_share_the_relay_and_callback_protocol(self):
+        activation = {
+            "machine_id": "1",
+            "number_of_impulses": 2,
+            "callback_url": "https://example.invalid/activation",
+            "callback_token": "test-token",
+            "activation_key": "test-activation",
+        }
+        for version in ("1.3", "1.7", "1.7.1", "1.8", "1.9",
+                        "1.10", "1.10.1", "1.10-rc.1", "1.11", "2.0", "unknown"):
+            with self.subTest(version=version), \
+                    patch.object(rm, "VERSION", version), \
+                    patch.object(rm.relay_ops, "activate_machine_v1_2") as relay, \
+                    patch.object(rm.requests, "post") as post, \
+                    patch("builtins.open", mock_open()) as config_file, \
+                    patch.object(rm.json, "dump") as dump:
+                post.return_value.status_code = 200
+                rm.message_activate(activation)
+                relay.assert_called_once_with(machine_id=1, number_of_impulses=2)
+                self.assertEqual(post.call_args.kwargs["json"]["status"], "CONFIRMED")
+                config = {"msg_type": "configure", "machines": []}
+                rm.message_configure(config)
+                config_file.assert_called_once_with("config.json", "w")
+                dump.assert_called_once_with(config, config_file.return_value, indent=4)
+                rm.message_version({"token": "test-token"})
+                self.assertEqual(post.call_args.kwargs["json"]["device_version"], version)
+
+    def test_version_file_preserves_version_labels(self):
+        for version in ("1.3", "1.7", "1.7.1", "1.8", "1.9", "1.10",
+                        "1.10.1", "1.10-rc.1", "1.10.1+build.2"):
+            with self.subTest(version=version), \
+                    patch("builtins.open", mock_open(
+                        read_data=rm.json.dumps({"version": version}))):
+                self.assertEqual(rm.get_version(), version)
+
+    def test_invalid_version_file_uses_unknown(self):
+        for data in ("{}", "null", "{", '{"version": 1.1}', '{"version": ""}'):
+            with self.subTest(data=data), \
+                    patch("builtins.open", mock_open(read_data=data)):
+                self.assertEqual(rm.get_version(), "unknown")
 
 
 if __name__ == "__main__":

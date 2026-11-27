@@ -31,27 +31,19 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-# Read version from external file
 def get_version():
-    """Read version information from the external version.json file"""
+    """Read the version label verbatim for reporting."""
+    version_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "version.json")
     try:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        version_file_path = os.path.join(script_dir, "version.json")
-        
-        if os.path.exists(version_file_path):
-            with open(version_file_path, 'r') as file:
-                version_data = json.load(file)
-                version = version_data["version"]
-                major, minor = (int(part) for part in version.split(".")[:2])
-                if (major, minor) < (1, 3):
-                    logging.warning("Unsupported firmware version %s; using the current relay format", version)
-                return version
-        else:
-            logging.warning("Version file not found at %s, using default version", version_file_path)
-            return 'unknown'
-    except Exception as e:
-        logging.error("Failed to read version file: %s", str(e))
-        return 'unknown'
+        with open(version_file, encoding="utf-8") as file:
+            version = json.load(file)["version"]
+        if not isinstance(version, str) or not version.strip():
+            raise ValueError("version must be a nonempty string")
+        return version
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        logging.warning("Failed to read firmware version: %s", exc)
+        return "unknown"
+
 
 VERSION = get_version()
 logging.info("Running with version: %s", VERSION)
@@ -285,6 +277,8 @@ def message_activate(json_data: dict):
             func_name, intent_id, machine_id, number_of_impulses
         )
 
+        # Unified firmware implements one relay protocol for the supported fleet.
+        # Version labels, including future ones, never select an older protocol.
         relay_ops.activate_machine_v1_2(
             machine_id=machine_id,
             number_of_impulses=number_of_impulses

@@ -71,6 +71,60 @@ for row in $MATRIX; do
         echo "  FAIL  Debian $deb fixture could not be built"
         fail=$((fail+1)); continue
     fi
+    if [ "$deb" = 11 ]; then
+        if ! docker run --rm --network none -i -v "$PWD:/src:ro" \
+            "pagalava-startup-matrix:$deb" bash -s <<'APT_TEST'
+set -eu
+mkdir -p /tmp/bin /tmp/install-home
+export HOME=/tmp/install-home PATH=/tmp/bin:$PATH
+printf '%s\n' 'deb http://deb.debian.org/debian bullseye main' \
+    'deb [arch=arm64] https://security.debian.org/debian-security bullseye-security main' \
+    'deb http://archive.raspberrypi.org/debian/ bullseye main' > /etc/apt/sources.list
+cp /etc/apt/sources.list /tmp/original.list
+printf '%s\n' 'Types: deb' 'URIs: http://deb.debian.org/debian' \
+    'Suites: bullseye-updates' 'Components: main' > /etc/apt/sources.list.d/debian.sources
+cat >/tmp/bin/sudo <<'STUB'
+#!/bin/bash
+set -eu
+[[ $1 == apt-get ]]
+[[ $3 == Dir::Etc::sourcelist=* ]]
+[[ $5 == Dir::Etc::sourceparts=* ]]
+grep -Fxq 'deb http://archive.debian.org/debian/ bullseye main' "${3#*=}"
+grep -Fxq 'deb [arch=arm64] http://archive.debian.org/debian-security/ bullseye-security main' "${3#*=}"
+grep -Fxq 'deb http://archive.raspberrypi.org/debian/ bullseye main' "${3#*=}"
+grep -Fxq 'URIs: http://archive.debian.org/debian/' "${5#*=}/debian.sources"
+printf '%s\n' "${3#*=}" >/tmp/apt-source-path
+[[ $8 == update || $8 == install ]]
+printf '%s\n' "$8" >> /tmp/apt-calls
+if [[ $8 == update ]]; then
+    [[ $9 == --error-on=any ]]
+fi
+[[ $8 != "$FAIL_STAGE" ]]
+STUB
+chmod +x /tmp/bin/sudo
+for FAIL_STAGE in update install; do
+    export FAIL_STAGE
+    : >/tmp/apt-calls
+    # Exercise the documented sourced invocation and ensure the caller survives.
+    bash -c '. /src/setup_pagalava_iot_debian11.sh </dev/null; test "$?" -eq 1' >/tmp/installer-output 2>&1
+    ! grep -q 'IOT_CONNECTION_STRING' /tmp/installer-output || exit 1
+    [ ! -e "$HOME/pagalava-iot" ]
+    [ ! -e "$(cat /tmp/apt-source-path)" ]
+    cmp /tmp/original.list /etc/apt/sources.list
+    if [ "$FAIL_STAGE" = update ]; then
+        [ "$(cat /tmp/apt-calls)" = update ]
+    else
+        [ "$(xargs </tmp/apt-calls)" = "update install" ]
+    fi
+done
+echo "  ok    Bullseye installer uses the archive and stops on APT failure"
+APT_TEST
+        then
+            echo "  FAIL  Bullseye installer archive/failure handling"
+            fail=$((fail+1)); continue
+        fi
+    fi
+
     out="$(docker run --rm --network none -i -v "$PWD:/src:ro" -w /tmp \
         -e IOT_CONNECTION_STRING="$FAKE_CS" "pagalava-startup-matrix:$deb" sh -c '
 set -u

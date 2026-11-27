@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# The documented legacy invocation sources this file. Keep failures and shell
+# options local to the installer so an abort does not close the login shell.
+(
+set -e
+
 # Configuration variables
 REPO_URL="https://github.com/airesmarques/pagalava-iot"
 # When invoked through sudo, install for the user who actually ran it rather
@@ -33,13 +38,42 @@ VENVDIR="${WORKINGDIR}/.venv"
 SCRIPTNAME="ReceiveMessages.py"
 SERVICENAME="receive_messages.service"
 
-# Update and upgrade Raspberry Pi OS
-echo "Updating and upgrading Raspberry Pi OS..."
-sudo apt-get update && sudo apt-get upgrade -y
+# Keep the archive override local to this install. Raspberry Pi/Raspbian
+# repositories and custom APT settings such as signed-by are retained.
+install_bullseye_packages() (
+    local sources source
+    sources=$(mktemp -d) || exit 1
+    trap 'rm -rf -- "$sources"' EXIT
+    mkdir "$sources/sources.list.d" || exit 1
+    : > "$sources/sources.list" || exit 1
 
-# Install Git, Python3, PIP, and GPIO library
-echo "Installing Git, Python3, PIP, GPIO library, Python Virtual environments..."
-sudo apt-get install git python3 python3-pip python3-rpi.gpio python3-venv -y
+    for source in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+        [ -f "$source" ] || continue
+        # Stock Bullseye uses one-line entries. Also handle deb822 if the
+        # operator has converted the source files. Rewrite only Debian mirrors.
+        sed -E '/^[[:space:]]*(deb(-src)?[[:space:]]|URIs:[[:space:]])/ {
+            s@https?://(deb|security)\.debian\.org/(debian-security|debian)/?([[:space:]]|$)@http://archive.debian.org/\2/\3@g
+        }' "$source" > "$sources/${source#/etc/apt/}" || exit 1
+    done
+
+    local apt_options=(
+        -o "Dir::Etc::sourcelist=$sources/sources.list"
+        -o "Dir::Etc::sourceparts=$sources/sources.list.d"
+        -o "APT::Get::List-Cleanup=false"
+    )
+    echo "Updating Bullseye package indexes..."
+    sudo apt-get "${apt_options[@]}" update --error-on=any || exit 1
+    # GPIO/SPI may need to be compiled on boards without compatible wheels.
+    sudo apt-get "${apt_options[@]}" install -y \
+        git python3 python3-pip python3-venv python3-dev build-essential
+)
+
+. /etc/os-release
+if [ "${VERSION_ID:-}" != 11 ]; then
+    echo "This installer requires Debian 11 (Bullseye)." >&2
+    exit 1
+fi
+install_bullseye_packages || exit 1
 
 # Prefer a provisioning file dropped on the SD card's boot partition, so an
 # installer who downloaded one from the dashboard does not have to paste a
@@ -76,11 +110,6 @@ fi
 
 # Export the connection string as an environment variable
 export IOT_CONNECTION_STRING
-echo IOT_CONNECTION_STRING=${IOT_CONNECTION_STRING}
-
-# Guardar a connection string num ficheiro .env para persistência
-echo "IOT_CONNECTION_STRING=\"${IOT_CONNECTION_STRING}\"" > "${WORKINGDIR}/.env"
-chmod 600 "${WORKINGDIR}/.env"  # Restringir permissões por segurança
 
 # Clone the repository
 echo "Cloning or updating the Pagalava repository..."
@@ -104,16 +133,17 @@ fi
 # Navigate into the cloned directory
 cd "${WORKINGDIR}"
 
-# Create a virtual environment and activate it
+# Create a virtual environment
 echo "Setting up the virtual environment..."
 python3 -m venv "${VENVDIR}"
-. "${VENVDIR}/bin/activate"
-
 
 # Install required Python packages
 echo "Installing required Python packages..."
-pip install -r requirements.txt
-deactivate
+"${VENVDIR}/bin/python" -m pip install -r requirements.txt
+
+# Guardar a connection string num ficheiro .env para persistência
+echo "IOT_CONNECTION_STRING=\"${IOT_CONNECTION_STRING}\"" > "${WORKINGDIR}/.env"
+chmod 600 "${WORKINGDIR}/.env"  # Restringir permissões por segurança
 
 # Make the main script executable
 chmod +x "${SCRIPTNAME}"
@@ -131,7 +161,7 @@ chmod +x diagnosticos.sh
 echo "Setting up the systemd service..."
 SERVICEFILE="/etc/systemd/system/${SERVICENAME}"
 
-cat <<EOF | sudo tee "$SERVICEFILE"
+cat <<EOF | sudo tee "$SERVICEFILE" >/dev/null
 [Unit]
 Description=Receive Messages Service
 After=network-online.target
@@ -184,3 +214,4 @@ fi
 rm -f "${SUDOERSTMP}"
 
 echo "Service ${SERVICENAME} has been started successfully."
+)
