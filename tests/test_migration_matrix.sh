@@ -80,8 +80,13 @@ for deb in $OSES; do
       "$img" sh -c "
 set -u
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq >/dev/null 2>&1
-apt-get install -y -qq python3 python3-venv git >/dev/null 2>&1
+# The live mirror still advertises Bullseye packages it no longer serves.
+if [ \"${deb}\" = 11 ]; then
+    sed -i 's|^deb http://deb.debian.org/|deb http://archive.debian.org/|' /etc/apt/sources.list ||
+        { echo 'APTFAIL: configuring Bullseye archive'; exit 1; }
+fi
+apt-get update -qq --error-on=any >/dev/null || { echo 'APTFAIL: apt-get update'; exit 1; }
+apt-get install -y -qq python3 python3-venv git >/dev/null || { echo 'APTFAIL: apt-get install'; exit 1; }
 git clone -q /repo.git /device 2>/dev/null || { echo CLONEFAIL; exit 1; }
 cd /device
 git checkout -q ${ref} 2>/tmp/co.err || { echo CHECKOUTFAIL; sed 's/^/    /' /tmp/co.err | head -3; exit 1; }
@@ -124,6 +129,10 @@ grep -q Traceback /tmp/run.log && { echo TRACEBACK; grep -A4 Traceback /tmp/run.
         printf '      after  : version.json=%-5s commit=%-8s firstboot.sh=%s\n' "${aver:-?}" "${asha:-?}" "${afb:-?}"
         printf '      ran on : Debian %s, Python %s -- service started and reached the IoT Hub client\n' "$deb" "${pyv:-?}"
         pass=$((pass+1))
+    elif echo "$out" | grep -q '^APTFAIL:'; then
+        echo "FAIL — APT setup failed"
+        echo "$out" | sed 's/^/        /'
+        fail=$((fail+1))
     else
         echo "FAIL — never reached client instantiation"
         echo "$out" | tail -3 | sed 's/^/        /'

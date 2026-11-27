@@ -70,8 +70,13 @@ for row in $MATRIX; do
         -e IOT_CONNECTION_STRING="$FAKE_CS" "$img" sh -c '
 set -u
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq >/dev/null 2>&1
-apt-get install -y -qq python3 python3-pip python3-venv >/dev/null 2>&1
+# The live mirror still advertises Bullseye packages it no longer serves.
+if [ "$1" = 11 ]; then
+    sed -i "s|^deb http://deb.debian.org/|deb http://archive.debian.org/|" /etc/apt/sources.list ||
+        { echo "APTFAIL: configuring Bullseye archive"; exit 1; }
+fi
+apt-get update -qq --error-on=any >/dev/null || { echo "APTFAIL: apt-get update"; exit 1; }
+apt-get install -y -qq python3 python3-pip python3-venv >/dev/null || { echo "APTFAIL: apt-get install"; exit 1; }
 PY=python3
 # Trixie and Bookworm refuse system-wide pip installs (PEP 668); a venv with
 # system site packages is what the device setup scripts do anyway.
@@ -97,11 +102,16 @@ done
 timeout 45 /venv/bin/python /tmp/ReceiveMessages.py > /tmp/run.log 2>&1
 grep -q "Instantiating IoT Hub client" /tmp/run.log && echo "STARTED"
 grep -q "Traceback" /tmp/run.log && { echo "TRACEBACK"; grep -A3 Traceback /tmp/run.log | head -6; }
-' 2>&1)"
+' sh "$deb" 2>&1)"
 
     pv="$(echo "$out" | grep -oE 'PYVER=[0-9.]+' | cut -d= -f2)"
     echo "  python: ${pv:-unknown}"
 
+    if echo "$out" | grep -q "^APTFAIL:"; then
+        echo "  FAIL  APT setup failed:"
+        echo "$out" | sed 's/^/        /'
+        fail=$((fail+1)); continue
+    fi
     if echo "$out" | grep -q "PIPFAIL"; then
         echo "  FAIL  dependencies would not install"; fail=$((fail+1)); continue
     fi
